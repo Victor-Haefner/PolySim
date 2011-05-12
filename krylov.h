@@ -249,7 +249,7 @@ class krylovRaum {
             {
                 for (i1=0; i1<s->m; i1++) {// calc b(i)
                     for (i2=0; i2<i1; i2++) {
-                        c = mult(s->vsys + k2*i2, s->vsys + k2*i1, k2);//<j Hi 0>
+                        c = mult(s->vsys + k2*i2, s->vsys + k2*i1, k2);//<j Hi 0> hier vlt mit der function khio(int k, int i) ?!? könnte viel zeit sparen!!
                         for (i3=0; i3<k2; i3++) s->vsys[i1*k2+i3] -= s->vsys[i2*k2+i3] * c;//|i> -= c|j>
                     }
 
