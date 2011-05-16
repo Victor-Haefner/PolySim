@@ -22,37 +22,41 @@ struct head {
     int N;//korrelation funktion size
 
     //mpi variables
-    int grid_id; //path id, needed to resume or append
+    int grid_id; //grid id, needed to resume or append
     int grid_w;
     int grid_h;
 
-    void writeHead(ofstream ofile, string path) {
-        ofile.open(path.c_str(), fstream::in | fstream::out | fstream::binary);
-        ofile.seekp(ios_base::beg);
-        ofile.write((char*)this, sizeof(head));
-        ofile.close();
+    string getPath() {//BS
+        char path[200];
+        sprintf(path, "%ix%ion%ix%i_ID%i_A%f\%_B%f\%_m%i_dt%f_T%i_%d.bin", k*grid_w, k*grid_h, grid_w, grid_h, grid_id, dA*100, dB*100, m, dt, T, (int)time(0));
+        return string(path);
     }
 
-    void readHead(ofstream ofile, string path) {
-        openFile();
-        if (!ofile.is_open()) {
+    void writeHead(string path) {
+        ofstream file(path.c_str(), fstream::in | fstream::out | fstream::binary);
+        file.seekp(ios_base::beg);
+        file.write((char*)this, sizeof(head));
+        file.close();
+    }
+
+    void readHead(string path) {
+        ifstream file(path.c_str(), fstream::in | fstream::binary);
+        if (!file.is_open()) {
             cout << "\nError while loading state, no file " << path << "\n";
-            return(0);
+            return;
         }
 
-        ofile.seekg(ios_base::beg);
-        ofile.read((char*)this, sizeof(head));
-        ofile.close();
+        file.seekg(ios_base::beg);
+        file.read((char*)this, sizeof(head));
+        file.close();
     }
 };
 
-struct options {
+struct options : public head {
     char job;
     string path;//datapath
     int N_buffer;//buffer
     float dos_crop;
-
-    head h;
 
     bool append;
     bool serial;
@@ -60,10 +64,10 @@ struct options {
     bool debug;
 };
 
-struct storage {
+struct storage : public head {
+    options* opt;
     bool started;
-
-    head* h;//main variables
+    string path;
 
     cplx* v0;//root state
     cplx* vsys;//actual state
@@ -147,8 +151,8 @@ struct storage {
     void allocate() {
         if(v0 != 0) delete[] v0;
         if(vsys != 0) delete[] vsys;
-        if(v0vt_buffer != 0) delete[] v0vt_buffer;
-        if(v0vt != 0) delete[] v0vt;
+        if(cf_buffer != 0) delete[] cf_buffer;
+        if(corrfunc != 0) delete[] corrfunc;
         if(westbound != 0) delete[] westbound;
         if(eastbound != 0) delete[] eastbound;
         if(northbound != 0) delete[] northbound;
@@ -163,29 +167,16 @@ struct storage {
             northbound = new cplx[2*k];
             southbound = new cplx[2*k];
         }
-        if (N_buffer > 0) v0vt_buffer = new cplx[N_buffer];
-        if (N > 0) v0vt = new cplx[N];
+        if (N_buffer > 0) cf_buffer = new cplx[N_buffer];
+        if (N > 0) corrfunc = new cplx[N];
     }
 
-    void set(options* opt) {//baustelle
-        k = opt->k;
-        m = opt->m;
-        dt = opt->dt;
-        T = opt->T;
-        N_buffer = opt->N_buffer;
+    void set(options* op) {
+        head* h = this;
+        head* ho = opt;
+        (*h) = (*ho);
 
-        grid_w = opt->grid_w;
-        grid_h = opt->grid_h;
-
-        seed_disorder = opt->seed_disorder;
-        seed_system = opt->seed_system;
-        dA = opt->def_A;
-        dB = opt->def_B;
-
-        serial = opt->serial;
-        graphene = opt->graphene;
-        debug = opt->debug;
-        omp_threads = opt->omp_threads;
+        opt = op;
 
         allocate();
     }
@@ -194,38 +185,27 @@ struct storage {
     void save() {
         cout << "\nSAVE";
 
-        char ctmp[100];
-        sprintf(ctmp, "results/sys%ix%i_A%f\%_B%f\%_seedS%i_seedD%i_%d.bin", k*grid_w, k*grid_h, dA*100, dB*100, seed_system, seed_disorder, (int)time(0));
-        path = string(ctmp);
+        path = "cf";
+        path += getPath();
+        writeHead(path);
+        ofstream ofile(path.c_str(), fstream::out | fstream::in | fstream::binary);
+        ofile.seekp(ios_base::beg + sizeof(head));
 
         started = true;
         int k2 = k*k;
-        ofstream ofile(path.c_str(), fstream::out | fstream::binary);
 
-
-        //overhead
+        //defects
         int kd = defects.size();
-        int def_tmp[kd]; for (int i=0;i<kd;i++) def_tmp[i] = defects[i];
-        ofile.write((char*)&k, sizeof(int));
         ofile.write((char*)&kd, sizeof(int));
-        ofile.write((char*)&m, sizeof(int));
-        ofile.write((char*)&N_buffer, sizeof(int));
-        ofile.write((char*)&dt, sizeof(float));
-        ofile.write((char*)&dA, sizeof(float));
-        ofile.write((char*)&dB, sizeof(float));
-        ofile.write((char*)&seed_system, sizeof(int));
-        ofile.write((char*)&seed_disorder, sizeof(int));
-        ofile.write((char*)&grid_w, sizeof(int));
-        ofile.write((char*)&grid_h, sizeof(int));
 
         //v0
         ofile.write((char*)v0, k2*sizeof(cplx));
         //vt
         ofile.write((char*)vsys, k2*sizeof(cplx));
         //defekte
-        ofile.write((char*)def_tmp, kd*sizeof(int));
+        ofile.write((char*)&defects[0], kd*sizeof(int));
         //korrelation fkt
-        ofile.write((char*)v0vt_buffer, N_buffer*sizeof(cplx));
+        ofile.write((char*)cf_buffer, N_buffer*sizeof(cplx));
 
 
         ofile.close();
@@ -234,29 +214,22 @@ struct storage {
     }
 
     void load(string path) {
+        cout << "\nload file\n";
+        readHead(path);
+
         //exit if not present
         ifstream ifile(path.c_str(), fstream::in | fstream::binary);
         if (!ifile.is_open()) {
             cout << "\nError while loading state, no file " << path << "\n";
             exit(0);
         }
+        ifile.seekg(sizeof(head));
 
-        cout << "\nload file\n";
         started = true;
 
-        //read overhead
+        //read defects
         int kd;
-        ifile.read((char*)&k, sizeof(int));
         ifile.read((char*)&kd, sizeof(int));
-        ifile.read((char*)&m, sizeof(int));
-        ifile.read((char*)&N, sizeof(int));
-        ifile.read((char*)&dt, sizeof(float));
-        ifile.read((char*)&dA, sizeof(float));
-        ifile.read((char*)&dB, sizeof(float));
-        ifile.read((char*)&seed_system, sizeof(int));
-        ifile.read((char*)&seed_disorder, sizeof(int));
-        ifile.read((char*)&grid_w, sizeof(int));
-        ifile.read((char*)&grid_h, sizeof(int));
 
 
         cout << "\nfile contains " << k << " A" << dA << "% B" << dB << "% " << m << " " << N << " " << dt << " " << "\n";
@@ -272,7 +245,7 @@ struct storage {
             ifile.read((char*)def_tmp, kd*sizeof(int));
             for (int i=0;i<kd;i++) defects.push_back(def_tmp[i]);
         }
-        if (N>0) ifile.read((char*)v0vt, N*sizeof(cplx));
+        if (N>0) ifile.read((char*)corrfunc, N*sizeof(cplx));
 
         ifile.close();
 
@@ -280,59 +253,31 @@ struct storage {
         cout << "\nFootprint : " << footprint() << endl;
     }
 
-    int check_overhead() {//return N
-        int _k, _kd, _m, _N;
-        float _dt;
-        //cout << "\n\ncheck overhead";
-
-        //read overhead if present and check if compatible
-        ifstream ifile(path.c_str(), fstream::in | fstream::binary);
-        if (!ifile.is_open()) {
-            cout << "\nError while loading state, no file " << path << "\n";
-            return(0);
-        }
-
-        ifile.read((char*)&_k, sizeof(int));
-        ifile.read((char*)&_kd, sizeof(int));
-        ifile.read((char*)&_m, sizeof(int));
-        ifile.read((char*)&_N, sizeof(int));
-        ifile.read((char*)&_dt, sizeof(float));
-        ifile.close();
-
-        //cout << "\nfile contains " << _k << " " << _kd << " " << _m << " " << _N << " " << _dt << " " << "\n";
-
-
-        if (_k != k or _m != m or _dt != dt)
-            return 0;
-
-        return _N;
-    }
-
     void append() {
         int k2 = k*k;
         N += N_buffer;
 
-        if (check_overhead() == 0 or started == false) {
+        head tmp; tmp.readHead(path);
+        if (tmp.N == 0 or started == false) {
             save();
             return;
         }
-        cout << "\nAPPEND";
+        cout << "\nAppend to " << path;
+
+        //rewrite head to change head change N
+        writeHead(path);
 
         fstream ofile;
         ofile.open(path.c_str(), fstream::in | fstream::out | fstream::binary);
 
-        //change N
-        ofile.seekp(ios_base::beg+sizeof(int)*3);
-        ofile.write((char*)&N, sizeof(int));
-
         //change state
-        ofile.seekp(ios_base::beg + 3*sizeof(float) + 8*sizeof(int) + k2*sizeof(cplx));
+        ofile.seekp(ios_base::beg + sizeof(head) + k2*sizeof(cplx));
         ofile.write((char*)vsys, k2*sizeof(cplx));
 
         //korrelation fkt
         ofile.close();
         ofile.open(path.c_str(), fstream::out | fstream::binary | fstream::app);
-        ofile.write((char*)v0vt_buffer, N_buffer*sizeof(cplx));
+        ofile.write((char*)cf_buffer, N_buffer*sizeof(cplx));
         ofile.close();
         cout << "\nFootprint : " << footprint() << endl;
     }
@@ -370,7 +315,7 @@ struct sequence {
 
     string path;
 
-    systm* s;
+    storage* s;
 
     sequence() {
         width = 0;
@@ -384,7 +329,7 @@ struct sequence {
         defects = 0;
     }
 
-    void set(options* opt, systm* _s) {
+    void set(options* opt, storage* _s) {
         s = _s;
         width = s->k;
         height = s->k;
@@ -488,46 +433,42 @@ struct sequence {
     }
 };
 
+//im grid ne fkt die ein state laden kann
 struct eigenvector {
-    string path;
     int N;
     cplx* v;
+    string path;
 
-    systm* s;
-    grid* gr;
+    storage* s;
 
-    ofstream ofile;
-    head h;
-
-    void openFile(bool empty = false) {
-        if (empty) ofile.open(path.c_str(), fstream::out | fstream::binary);
-        else
+    void allocate() {
+        if(v != 0) delete[] v;
+        if (k>0) v = new cplx[k*k];
     }
 
-    void setPath() {//BS
-        char ctmp[100];
-        sprintf(ctmp, "eigenvectors/ev%ix%i_ID%i_A%f\%_B%f\%_%d.bin", s->k*gr->gx, s->k*gr->gy, gr->id(), s->dA*100, s->dB*100, (int)time(0));
-        path = string(ctmp);
-    }
+    void writeData() {//baustelle
+        s->writeHead(path);
 
-    void writeData() {
-        openFile();
-        ofile.seekp(ios_base::beg + headSize());
+        ofstream ofile(path.c_str(), fstream::in | fstream::out | fstream::binary);
+        ofile.seekp(ios_base::beg + sizeof(head));
+
+        //hier zeugs speichern!!!
         ofile.write((char*)&k, sizeof(int));
+
         ofile.close();
     }
 
-    void readData() {
+    void readData() {//baustelle
         ;
     }
 
     void save() {
-        setPath();
-        writeHead();
+        path = "ev";
+        path += s->getPath();
         writeData();
     }
 
-    void append() {
+    void append() {//baustelle
         ;
     }
 };

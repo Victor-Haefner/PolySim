@@ -35,7 +35,7 @@ class grid {
             MPI_Comm_rank(MPI_COMM_WORLD, &process_i);
             MPI_Get_processor_name(processor_name, &name_len);
 
-	    type = MPI_DOUBLE_COMPLEX;
+            type = MPI_DOUBLE_COMPLEX;
 
             cout << "\nGrid " << process_i << " from " << process_N << " initiated\n";
 
@@ -108,9 +108,9 @@ class grid {
 
             MPI_Barrier(MPI_COMM_WORLD);
 	    //cout << "\nProcess " << process_i << " done waiting\n";
-	
+
 	    //check the request objects to free internal memory
-	    MPI_Waitall(4, request, MPI_STATUSES_IGNORE); 
+	    MPI_Waitall(4, request, MPI_STATUSES_IGNORE);
         }
 
         cplx gatherSum(cplx& c) {
