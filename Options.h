@@ -72,8 +72,8 @@ void parse_options(int argc, char **argv, options* opt) {
     if (vm.count("dos_crop")) opt->dos_crop = vm["dos_crop"].as<float>();
 
     //specific defects
-    if (vm.count("defects_A")) opt->def_A = vm["defects_A"].as<float>();
-    if (vm.count("defects_B")) opt->def_B = vm["defects_B"].as<float>();
+    if (vm.count("defects_A")) opt->dA = vm["defects_A"].as<float>();
+    if (vm.count("defects_B")) opt->dB = vm["defects_B"].as<float>();
 
     //cout << "\nopt sys size : " << opt->k << "\n";
     //cout << "\nopt grid w : " << opt->grid_w << "\n";

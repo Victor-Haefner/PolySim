@@ -77,7 +77,7 @@ class grid {
             MPI_Barrier(MPI_COMM_WORLD);
         }
 
-        void getBounds(systm* s) {//grid zero is in north west
+        void getBounds(storage* s) {//grid zero is in north west
             //cout << "\nProcess " << process_i << " send and receive bounds from " << west << " " << east << " " << north << " " << south << "\n";
 
 

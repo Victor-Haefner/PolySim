@@ -16,7 +16,7 @@ class timeEvolution {
         cplx* V_k;
         double* EW;
 
-        systm* s;
+        storage* s;
 
         double qlt[3];//qualitaet
         double Q, Qd;
@@ -186,7 +186,7 @@ class timeEvolution {
             if (H_k) delete[] H_k;
         }
 
-        void set(systm* _s) {
+        void set(storage* _s) {
             s = _s;
 
             EW = new double[s->m];
@@ -202,7 +202,7 @@ class timeEvolution {
             diagonalize(s->m, S_k, EW);
             transpose(s->m,S_k);
 
-            if (s->debug) {
+            if (s->opt->debug) {
                 checkDiagQ();
                 checkQ();
             }

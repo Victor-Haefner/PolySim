@@ -8,7 +8,7 @@ using namespace std;
 
 class krylovRaum {
     private:
-        systm* s;
+        storage* s;
         int k2;
 
         grid* gr;
@@ -27,7 +27,7 @@ class krylovRaum {
 
             for (int i=0; i<N; i++) c += std::conj(v1[i]) * v2[i];
 
-            if (s->serial) return c;
+            if (s->opt->serial) return c;
             else return gr->gatherSum(c);
         }
 
@@ -234,7 +234,7 @@ class krylovRaum {
             normC[0] = 1;
 
             //calc v Hv HHv HHHv ...
-            if (s->serial) for (int i=0;i<s->m-1;i++) HPsi_serial(s->vsys + i*k2, s->vsys + i*k2 + k2);
+            if (s->opt->serial) for (int i=0;i<s->m-1;i++) HPsi_serial(s->vsys + i*k2, s->vsys + i*k2 + k2);
             else for (int i=0;i<s->m-1;i++) HPsi_mpi(s->vsys + i*k2, s->vsys + i*k2 + k2);
 
             //vor gram schmidt!
@@ -264,7 +264,7 @@ class krylovRaum {
             }
 
             //teste die orthogonalität und norm
-            if (s->debug) {
+            if (s->opt->debug) {
                 cplx c;
                 double q = 0;
                 for (int i=1;i<s->m;i++) {
@@ -343,7 +343,7 @@ class krylovRaum {
             if (k_h_o) delete[] k_h_o;
         }
 
-        void set(systm* _s, grid* _gr) {
+        void set(storage* _s, grid* _gr) {
             s = _s;
             gr = _gr;
             int m = s->m;
@@ -412,7 +412,7 @@ class krylovRaum {
             cplx c = 0;
             for (int i=0; i<k2; i++) c += s->v0[i]*s->vsys[i];//v0 ist schon vorab conjugiert worden
 
-            if (s->serial) return c;
+            if (s->opt->serial) return c;
             else return gr->gatherSum(c);
         }
 

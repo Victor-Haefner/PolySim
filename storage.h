@@ -442,18 +442,20 @@ struct eigenvector {
     storage* s;
 
     void allocate() {
+        int k = s->k;
         if(v != 0) delete[] v;
         if (k>0) v = new cplx[k*k];
     }
 
     void writeData() {//baustelle
         s->writeHead(path);
+        int k2 = s->k*s->k;
 
         ofstream ofile(path.c_str(), fstream::in | fstream::out | fstream::binary);
         ofile.seekp(ios_base::beg + sizeof(head));
 
         //hier zeugs speichern!!!
-        ofile.write((char*)&k, sizeof(int));
+        ofile.write((char*)v, k2*sizeof(cplx));
 
         ofile.close();
     }

@@ -10,7 +10,7 @@ class Zustandsdichte {
     private:
 
         int M;//stats
-        systm* s;
+        storage* s;
 
         cplx* ffin;
         cplx* ffout;
@@ -79,7 +79,7 @@ class Zustandsdichte {
             if (time) fftw_free(time);
         }
 
-        void set(systm* _s, int m) {
+        void set(storage* _s, int m) {
             s = _s;
             M = m;
 
@@ -106,7 +106,7 @@ class Zustandsdichte {
 	    if (dos_crop<0) dos_crop=0;
 	    if (dos_crop>1) dos_crop=1;
 	    int N = s->N*dos_crop;
-            for (int i=0;i<N;i++) add(i,s->v0vt[i], N);
+            for (int i=0;i<N;i++) add(i,s->corrfunc[i], N);
 
             //output start vector
             saveData("DOS_in", ffin);

@@ -17,12 +17,12 @@ class Simulator {
         krylovRaum K;
         timeEvolution U;
 
-        void initRandomSystem(systm* s) {
+        void initRandomSystem(storage* s) {
             cout << "\nInit random system";
 
             s->set(opt);
-            if (gr) s->distributeRandomDefects(gr->id(), opt->def_A, opt->def_B);
-            else s->distributeRandomDefects(0, opt->def_A, opt->def_B);
+            if (gr) s->distributeRandomDefects(gr->id(), opt->dA, opt->dB);
+            else s->distributeRandomDefects(0, opt->dA, opt->dB);
 
             if (opt->append) s->load(opt->path);
 
@@ -38,11 +38,11 @@ class Simulator {
 
         void compute_wavepacket() {
             cout << "\nStart wavepacket\n";
-            systm* s = new systm;
+            storage* s = new storage;
             sequence* seq = new sequence;
             s->set(opt);
 
-            s->distributeRandomDefects(gr->id(), opt->def_A, opt->def_B);
+            s->distributeRandomDefects(gr->id(), opt->dA, opt->dB);
 
             seq->set(opt,s);
 
@@ -61,7 +61,7 @@ class Simulator {
             vector<double>* stats = new vector<double>(5,0);
             timeline* time = 0;
             player* pl = 0;
-            if (s->debug) {
+            if (s->opt->debug) {
                 //timeline time(800,300,6);
                 time = new timeline(800,300,6);
                 time->setVector(stats);
@@ -85,7 +85,7 @@ class Simulator {
                 seq->copyData();//write in buffer
                 seq->append();//write to file
 
-                if (s->debug) {
+                if (s->opt->debug) {
                     (*stats)[1] = U.getDiagQ();
                     (*stats)[0] = U.getQ();
 
@@ -106,7 +106,7 @@ class Simulator {
         }
 
         void propagate_wavepacket() {
-            systm* s = new systm;
+            storage* s = new storage;
             sequence* seq = new sequence;
             s->set(opt);
             seq->set(opt,s);
@@ -126,12 +126,12 @@ class Simulator {
         void compute_correlation_function() {
             cout << "\nStart correlation function computation\n";
 
-            systm* s = new systm;
+            storage* s = new storage;
             initRandomSystem(s);
 
             vector<double>* stats = new vector<double>(5,0);
             timeline* time = 0;
-            if (s->debug) {
+            if (s->opt->debug) {
                 time = new timeline(800,300,6);
                 time->setVector(stats);
             }
@@ -141,9 +141,9 @@ class Simulator {
             for (int i=0,j=0; i<s->T; i++) {
 
                 //projection on root state
-                s->v0vt_buffer[j] = K.mult0();//MPI?
-                if (gr) cout << "\nSimulation step " << i << " " << s->v0vt_buffer[j] << " on " << gr->id() << "\n";
-                else cout << "\nSimulation step " << i << " " << s->v0vt_buffer[j] << " on " << 0 << "\n";
+                s->cf_buffer[j] = K.mult0();//MPI?
+                if (gr) cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << gr->id() << "\n";
+                else cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << 0 << "\n";
 
                 //compute timestep
                 //construct krylov basis and construct hamiltonian in krylov space
@@ -159,7 +159,7 @@ class Simulator {
                     j = 0;
                 }
 
-                if (s->debug) {
+                if (s->opt->debug) {
                     (*stats)[1] = U.getDiagQ();
                     (*stats)[0] = U.getQ();
 
@@ -177,7 +177,7 @@ class Simulator {
         void compute_dos() {
             cout << "\nStart DOS Simulation\n";
 
-            systm* s = new systm;
+            storage* s = new storage;
             s->set(opt);
 
             Zustandsdichte dos;
@@ -204,7 +204,7 @@ class Simulator {
         void compute_EV() {
             cout << "\nStart DC computation\n";
 
-            systm* s = new systm;
+            storage* s = new storage;
             initRandomSystem(s);
 
             //512x512 states are 4 mb big, this means with 512 memory I can do easily 100 states
@@ -213,8 +213,8 @@ class Simulator {
             for (int i=0,j=0; i<s->T; i++) {
 
                 //stats
-                if (gr) cout << "\nSimulation step " << i << " " << s->v0vt_buffer[j] << " on " << gr->id() << "\n";
-                else cout << "\nSimulation step " << i << " " << s->v0vt_buffer[j] << " on " << 0 << "\n";
+                if (gr) cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << gr->id() << "\n";
+                else cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << 0 << "\n";
 
                 //compute timestep
                 //construct krylov basis and construct hamiltonian in krylov space
@@ -229,7 +229,7 @@ class Simulator {
         void compute_DC() {
             cout << "\nStart DC computation\n";
 
-            systm* s = new systm;
+            storage* s = new storage;
             initRandomSystem(s);
 
             //J_x on system -> vector from options?
@@ -238,15 +238,15 @@ class Simulator {
             for (int i=0,j=0; i<s->T; i++) {
 
                 //projection on root state
-                s->v0vt_buffer[j] = K.multE();//MPI?
+                s->cf_buffer[j] = K.multE();//MPI?
 
                 //stats
-                if (gr) cout << "\nSimulation step " << i << " " << s->v0vt_buffer[j] << " on " << gr->id() << "\n";
-                else cout << "\nSimulation step " << i << " " << s->v0vt_buffer[j] << " on " << 0 << "\n";
+                if (gr) cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << gr->id() << "\n";
+                else cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << 0 << "\n";
 
                 //compute timestep
                 //construct krylov basis and construct hamiltonian in krylov space
-                (*stats)[3] = K.process();//MPI -> hamilton ist fuer alle processe gleich, deshalb zeitentwicklung identisch, kein problem
+                K.process();//MPI -> hamilton ist fuer alle processe gleich, deshalb zeitentwicklung identisch, kein problem
                 cplx* Vk = U.evolve(K.getHamilton());//evolve with hamiltonian from krylov space and given timestep
                 K.convert(Vk);//write new state back into world space and into the krylov basis
 
