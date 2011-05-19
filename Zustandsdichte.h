@@ -103,10 +103,11 @@ class Zustandsdichte {
         }
 
         void process(float dos_crop) {
-	    if (dos_crop<0) dos_crop=0;
-	    if (dos_crop>1) dos_crop=1;
-	    int N = s->N*dos_crop;
-            for (int i=0;i<N;i++) add(i,s->corrfunc[i], N);
+            if (dos_crop<0) dos_crop=0;
+            if (dos_crop>1) dos_crop=1;
+            int N = s->N*dos_crop;
+
+            for (int i=0;i<N;i++) add(i,s->dos[i], N);
 
             //output start vector
             saveData("DOS_in", ffin);

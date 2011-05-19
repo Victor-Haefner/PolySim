@@ -52,6 +52,146 @@ struct head {
     }
 };
 
+//implement addition, substraction, multiplication, etc..
+struct NVector {
+    cplx* v;
+    int N;
+
+    void allocate(int n) {
+        N = n;
+        v = new cplx[n];
+        for (int i=0;i<N;i++) v[i] = 0;
+    }
+
+    void kill() { delete[] v; }
+
+    void save(string path, int offset) {
+        ofstream ofile(path.c_str(), fstream::in | fstream::out | fstream::binary);
+        ofile.seekp(ios_base::beg + offset);
+        ofile.write((char*)v, N*sizeof(cplx));
+        ofile.close();
+    }
+
+    void load(string path, int offset) {
+        //exit if not present
+        ifstream ifile(path.c_str(), fstream::in | fstream::binary);
+        if (!ifile.is_open()) {
+            cout << "\nError while loading state, no file " << path << "\n";
+            exit(0);
+        }
+
+        ifile.seekg(offset);
+        ifile.read((char*)v, N*sizeof(cplx));
+        ifile.close();
+    }
+
+    void setRandom(int seed) {
+        srand(seed);
+        float rm = RAND_MAX;
+
+        for (int i=0;i<N;i++) {
+            float a = rand() - rm/2;
+            float b = rand() - rm/2;
+            cplx cab = cplx(a,b);
+            v[i] = cab*(1./rm);
+        }
+    }
+
+    void setDelta(int i) {
+        for (int j=0;j<N;j++) {
+            v[j] = 0;
+        }
+        v[i] = 1;
+    }
+
+    void apply_mask(NVector mask) {
+        for (int i=0;i<N;i++) {
+            v[i] = v[i]*mask.v[i];
+        }
+    }
+
+    int size() {return N;}
+
+    cplx* data() {return v;}
+
+    cplx& operator[](int i) { return v[i]; }
+
+
+    //--------------MATH-------------------
+
+    cplx mult(NVector _v) {
+        if (_v.N != N) cout << "\nWarning! in fkt mult, sizes of vectors don't match!\n";
+
+        cplx c(0,0);
+
+        for (int i=0; i<N; i++) c += std::conj(v[i]) * _v.v[i];
+
+        return c;
+    }
+
+    void normalize(double norm) {
+        if (norm < 1e-15) cout << "\nWarning! norm of Vector nearly zero in fkt normalize!\n";
+        for (int i=0;i<N;i++) v[i] /= norm;
+    }
+
+    void copy(NVector _v) {
+        if (_v.N != N) cout << "\nWarning! in fkt mult, sizes of vectors don't match!\n";
+        for (int i=0;i<N;i++) v[i] = _v.v[i];
+    }
+
+    void conjugate() { for (int i=0;i<N;i++) v[i] = std::conj(v[i]); }
+
+};
+
+struct corrFkt {
+    int N;
+    cplx* corrfunc;
+
+    int N_buffer;//buffer
+    cplx* cf_buffer;
+
+
+    void allocate(int n, int n_b) {
+        N = n;
+        N_buffer = n_b;
+
+        corrfunc = new cplx[n];
+        cf_buffer = new cplx[n_b];
+
+        for (int i=0;i<N;i++) corrfunc[i] = 0;
+        for (int i=0;i<N_buffer;i++) cf_buffer[i] = 0;
+    }
+
+    void kill() { delete[] corrfunc; delete[] cf_buffer; }
+
+    void append(string path) {
+        ofstream ofile(path.c_str(), fstream::out | fstream::binary | fstream::app);
+        ofile.write((char*)cf_buffer, N_buffer*sizeof(cplx));
+        ofile.close();
+    }
+
+    void load(string path, int offset) {
+        //exit if not present
+        ifstream ifile(path.c_str(), fstream::in | fstream::binary);
+        if (!ifile.is_open()) {
+            cout << "\nError while loading state, no file " << path << "\n";
+            exit(0);
+        }
+
+        ifile.seekg(offset);
+        ifile.read((char*)corrfunc, N*sizeof(cplx));
+        ifile.close();
+    }
+
+    int size() {return N;}
+    int bufferSize() {return N_buffer;}
+
+    cplx* data() {return corrfunc;}
+    cplx* buffer() {return cf_buffer;}
+
+    cplx& operator[](int i) { return corrfunc[i]; }
+};
+
 struct options : public head {
     char job;
     string path;//datapath
@@ -64,48 +204,49 @@ struct options : public head {
     bool debug;
 };
 
+//everything for the krylov basis
 struct storage : public head {
     options* opt;
-    bool started;
+    bool saved;
     string path;
 
-    cplx* v0;//root state
-    cplx* vsys;//actual state
+    NVector initial_state;
+    NVector defects_mask;
+    vector<NVector> krylov_basis;
 
-    //bounds, 2*k
+    corrFkt dos;
+
+    //mpi lattice bounds, 2*k
     cplx* westbound;
     cplx* eastbound;
     cplx* northbound;
     cplx* southbound;
 
-    vector<int> defects;
 
-    cplx* corrfunc;
-
-    int N_buffer;//buffer
-    cplx* cf_buffer;
-
-    storage () {
-        v0 = 0;
-        vsys = 0;
-        corrfunc = 0;
-        N_buffer = 0;
-        cf_buffer = 0;
+    storage (options* op) {
         westbound = 0;
         eastbound = 0;
         northbound = 0;
         southbound = 0;
-        started = false;
+
+        saved = false;
+
+        head* h = this;
+        head* ho = opt;
+        (*h) = (*ho);
+
+        opt = op;
     }
 
-    void distributeRandomDefects(int gridid, float def_A, float def_B) {
+    void distributeRandomDefects(int seed, float def_A, float def_B) {
         int nA=def_A*k*k*0.5;
         int nB=def_B*k*k*0.5;
         int nA_t = 0;
         int nB_t = 0;
         char l=0;
 
-        srand(seed_disorder + gridid);
+        srand(seed);
+        int d_n = 0;
         for (int i=0;i<nA+nB;i++) {
             int dx = rand()%k;
             int dy = rand()%k;
@@ -126,352 +267,86 @@ struct storage : public head {
 
             if (dx >= k) dx -= k - k%2;
 
+            cplx u = cplx(1,0);
+
             bool wrong=false;
             do {
-                for(int j=0;j<defects.size();j++) {
-                    if(defects[j] == dx + dy*k) {
-                        wrong=true;
-                        dx+=2;
-                        if (dx >= k) {
-                            dx -= k - k%2 -1;
-                            if (dx == 2) dx = 0;
-                            dy++;
-                        }
-                        if (dy >= k) dy -= k;
-                        break;
-                    } else wrong=false;
-                }
+                if(defects_mask[dx + dy*k] == u) {
+                    wrong=true;
+                    dx+=2;
+                    if (dx >= k) {
+                        dx -= k - k%2 -1;
+                        if (dx == 2) dx = 0;
+                        dy++;
+                    }
+                    if (dy >= k) dy -= k;
+                    break;
+                } else wrong=false;
             } while(wrong);
 
-            defects.push_back(dx + dy*k);
+            defects_mask[dx + dy*k] = 1; d_n++;
         }
-        cout << "\nNumber of defects : " << defects.size() << " witch are " << 100.0*defects.size()/(k*k) << "%\n";
+        cout << "\nNumber of defects : " << d_n << " witch are " << 100.0*d_n/(k*k) << "%\n";
     }
 
     void allocate() {
-        if(v0 != 0) delete[] v0;
-        if(vsys != 0) delete[] vsys;
-        if(cf_buffer != 0) delete[] cf_buffer;
-        if(corrfunc != 0) delete[] corrfunc;
-        if(westbound != 0) delete[] westbound;
-        if(eastbound != 0) delete[] eastbound;
-        if(northbound != 0) delete[] northbound;
-        if(southbound != 0) delete[] southbound;
-
-
         if (k>0) {
-            v0 = new cplx[k*k];
-            vsys = new cplx[k*k*m];
+            initial_state.allocate(k*k);
+            for (int i=0;i<m;i++) krylov_basis.push_back(NVector());
+            for (int i=0;i<m;i++) krylov_basis[i].allocate(k*k);
+
             westbound = new cplx[2*k];
             eastbound = new cplx[2*k];
             northbound = new cplx[2*k];
             southbound = new cplx[2*k];
         }
-        if (N_buffer > 0) cf_buffer = new cplx[N_buffer];
-        if (N > 0) corrfunc = new cplx[N];
+
+        dos.allocate(N, opt->N_buffer);
     }
 
-    void set(options* op) {
-        head* h = this;
-        head* ho = opt;
-        (*h) = (*ho);
-
-        opt = op;
-
-        allocate();
-    }
-
-    //speichert den aktuellen Zustand, grundzustand, und alle projektionen auf diesen, sowie alles weitere das für die DOS gebraucht wird
-    void save() {
-        cout << "\nSAVE";
+    //speichert den aktuellen Zustand, grundzustand, und korr funktion, sowie alles weitere das für die DOS gebraucht wird
+    void initial_write() {
+        cout << "\nSave";
 
         path = "cf";
         path += getPath();
         writeHead(path);
-        ofstream ofile(path.c_str(), fstream::out | fstream::in | fstream::binary);
-        ofile.seekp(ios_base::beg + sizeof(head));
 
-        started = true;
+        saved = true;
         int k2 = k*k;
 
-        //defects
-        int kd = defects.size();
-        ofile.write((char*)&kd, sizeof(int));
-
-        //v0
-        ofile.write((char*)v0, k2*sizeof(cplx));
-        //vt
-        ofile.write((char*)vsys, k2*sizeof(cplx));
-        //defekte
-        ofile.write((char*)&defects[0], kd*sizeof(int));
-        //korrelation fkt
-        ofile.write((char*)cf_buffer, N_buffer*sizeof(cplx));
-
-
-        ofile.close();
-
-        cout << "\nFootprint : " << footprint() << endl;
-    }
-
-    void load(string path) {
-        cout << "\nload file\n";
-        readHead(path);
-
-        //exit if not present
-        ifstream ifile(path.c_str(), fstream::in | fstream::binary);
-        if (!ifile.is_open()) {
-            cout << "\nError while loading state, no file " << path << "\n";
-            exit(0);
-        }
-        ifile.seekg(sizeof(head));
-
-        started = true;
-
-        //read defects
-        int kd;
-        ifile.read((char*)&kd, sizeof(int));
-
-
-        cout << "\nfile contains " << k << " A" << dA << "% B" << dB << "% " << m << " " << N << " " << dt << " " << "\n";
-        int k2 = k*k;
-
-        allocate();
-
-        //v0 vt
-        if (k2>0) ifile.read((char*)v0, k2*sizeof(cplx));
-        if (k2>0) ifile.read((char*)vsys, k2*sizeof(cplx));
-        if (kd>0) {
-            int def_tmp[kd];
-            ifile.read((char*)def_tmp, kd*sizeof(int));
-            for (int i=0;i<kd;i++) defects.push_back(def_tmp[i]);
-        }
-        if (N>0) ifile.read((char*)corrfunc, N*sizeof(cplx));
-
-        ifile.close();
-
-        //cout << "\nfile loaded successfully\n";
-        cout << "\nFootprint : " << footprint() << endl;
+        initial_state.save(path, ios_base::beg + sizeof(head));
+        defects_mask.save(path, ios_base::beg + sizeof(head) + k2*sizeof(cplx));
+        krylov_basis[0].save(path, ios_base::beg + sizeof(head) + 2*k2*sizeof(cplx));
     }
 
     void append() {
         int k2 = k*k;
-        N += N_buffer;
+        N += opt->N_buffer;
 
-        head tmp; tmp.readHead(path);
-        if (tmp.N == 0 or started == false) {
-            save();
-            return;
-        }
+        if (!saved) initial_write();
         cout << "\nAppend to " << path;
 
-        //rewrite head to change head change N
+        //rewrite head to change N
         writeHead(path);
 
-        fstream ofile;
-        ofile.open(path.c_str(), fstream::in | fstream::out | fstream::binary);
-
-        //change state
-        ofile.seekp(ios_base::beg + sizeof(head) + k2*sizeof(cplx));
-        ofile.write((char*)vsys, k2*sizeof(cplx));
-
-        //korrelation fkt
-        ofile.close();
-        ofile.open(path.c_str(), fstream::out | fstream::binary | fstream::app);
-        ofile.write((char*)cf_buffer, N_buffer*sizeof(cplx));
-        ofile.close();
-        cout << "\nFootprint : " << footprint() << endl;
+        krylov_basis[0].save(path, ios_base::beg + sizeof(head) + 2*k2*sizeof(cplx));
+        dos.append(path);
     }
 
-    //hint to help identifiing a system
-    cplx footprint() {
-        cplx c = 0;
-
-        for (int i=0;i<k*k;i++) {
-            c += v0[i];
-            c += vsys[i];
-        }
-
-        for (int i=0;i<defects.size();i++) {
-            c += defects[i];
-        }
-
-        return c;
-    }
-};
-
-//sequence of states
-struct sequence {
-    int width;
-    int height;
-
-    int cx;
-    int cy;
-
-    int lenght;
-    cplx* frames;
-
-    int kd;
-    int* defects;
-
-    string path;
-
-    storage* s;
-
-    sequence() {
-        width = 0;
-        height = 0;
-        cx = 0;//offset, corner
-        cy = 0;
-        lenght = 0;
-        kd = 0;
-
-        frames = 0;
-        defects = 0;
-    }
-
-    void set(options* opt, storage* _s) {
-        s = _s;
-        width = s->k;
-        height = s->k;
-        lenght = s->T;
-
-        if (width > s->k) width = s->k;
-        if (height > s->k) height = s->k;
-
-        cx = s->k/2-width/2;
-        cy = s->k/2-height/2;
-
-        frames = new cplx[lenght*width*height];
-
-        kd = 0;
-        for (int j=0;j<s->defects.size();j++)
-            if (s->defects[j] >= cy*s->k+cx and s->defects[j] <= (cy+height)*s->k+cx+width)
-                kd++;
-
-        defects = new int[kd];
-
-        int di = 0;
-        int dj = 0;
-        for (int j=0;j<s->defects.size();j++)
-            if (s->defects[j] >= cy*s->k+cx and s->defects[j] <= (cy+height)*s->k+cx+width) {
-                dj = s->defects[j];
-                defects[di] = dj-(cy*s->k+cx)-(s->k-width)*(dj/s->k-cy);
-                di++;
-            }
-    }
-
-    //speichert einen Ausschnitt vom system
-    void save() {
-        char ctmp[100];
-        sprintf(ctmp, "sys%i.%d.bin", s->k, (int)time(0));
-        path = string(ctmp);
-
-        ofstream ofile(path.c_str(), fstream::out | fstream::binary);
-
-        ofile.write((char*)&width, sizeof(int));
-        ofile.write((char*)&height, sizeof(int));
-        ofile.write((char*)&cx, sizeof(int));
-        ofile.write((char*)&cy, sizeof(int));
-        ofile.write((char*)&lenght, sizeof(int));
-
-
-        ofile.write((char*)&kd, sizeof(int));
-        ofile.write((char*)defects, kd*sizeof(int));
-    }
-
-    void copyData() {
-        int x;
-        int y;
-        int ii;
-
-        for (int i=0; i<height; i++) {//geh durch frame
-            for (int j=0; j<width; j++) {
-                x = cx+j;
-                y = cy+i;
-                ii = x*s->k + y;
-
-                frames[i*width+j] = s->vsys[ii];//speicher ausschnitt
-            }
-        }
-    }
-
-    void append() {
-        fstream ofile(path.c_str(), fstream::in | fstream::out | fstream::binary | fstream::app);
-        ofile.write((char*)frames, width*height*sizeof(cplx));
-        ofile.close();
-    }
-
-    void load(string path) {
-        //exit if not present
-        ifstream ifile(path.c_str(), fstream::in | fstream::binary);
-        if (!ifile.is_open()) {
-            cout << "\nError while loading sequence, no file " << path << "\n";
-            exit(0);
-        }
-
+    void load(string _path) {
+        path = _path;
         cout << "\nload file\n";
+        readHead(path);
+        allocate();
 
-        //read overhead
-        ifile.read((char*)&width, sizeof(int));
-        ifile.read((char*)&height, sizeof(int));
-        ifile.read((char*)&cx, sizeof(int));
-        ifile.read((char*)&cy, sizeof(int));
-        ifile.read((char*)&lenght, sizeof(int));
+        saved = true;
+        int k2 = k*k;
 
-        ifile.read((char*)&kd, sizeof(int));
-        ifile.read((char*)defects, kd*sizeof(int));
-
-        ifile.read((char*)frames, width*height*lenght*sizeof(cplx));
-
-        ifile.close();
-
-        cout << "\nfile loaded successfully\n";
-
-        cout << "\nLatice size : " << width << " x " << height << "\n";
-        cout << "\nTime steps : " << lenght << "\n";
-        cout << "\nDefects : " << kd << "\n";
-    }
-};
-
-//im grid ne fkt die ein state laden kann
-struct eigenvector {
-    int N;
-    cplx* v;
-    string path;
-
-    storage* s;
-
-    void allocate() {
-        int k = s->k;
-        if(v != 0) delete[] v;
-        if (k>0) v = new cplx[k*k];
-    }
-
-    void writeData() {//baustelle
-        s->writeHead(path);
-        int k2 = s->k*s->k;
-
-        ofstream ofile(path.c_str(), fstream::in | fstream::out | fstream::binary);
-        ofile.seekp(ios_base::beg + sizeof(head));
-
-        //hier zeugs speichern!!!
-        ofile.write((char*)v, k2*sizeof(cplx));
-
-        ofile.close();
-    }
-
-    void readData() {//baustelle
-        ;
-    }
-
-    void save() {
-        path = "ev";
-        path += s->getPath();
-        writeData();
-    }
-
-    void append() {//baustelle
-        ;
+        initial_state.load(path, ios_base::beg + sizeof(head));
+        defects_mask.load(path, ios_base::beg + sizeof(head) + k2*sizeof(cplx));
+        krylov_basis[0].load(path, ios_base::beg + sizeof(head) + 2*k2*sizeof(cplx));
+        dos.load(path, ios_base::beg + sizeof(head) + 3*k2*sizeof(cplx));
     }
 };
 

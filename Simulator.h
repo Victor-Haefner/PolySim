@@ -17,116 +17,32 @@ class Simulator {
         krylovRaum K;
         timeEvolution U;
 
-        void initRandomSystem(storage* s) {
+        int id;
+
+        void initRandomSystem(storage* s) {//needs to be checked!
             cout << "\nInit random system";
-
-            s->set(opt);
-            if (gr) s->distributeRandomDefects(gr->id(), opt->dA, opt->dB);
-            else s->distributeRandomDefects(0, opt->dA, opt->dB);
-
-            if (opt->append) s->load(opt->path);
 
             K.set(s,gr);                cout << "\nK set\n";
             U.set(s);                   cout << "\nU set\n";
 
-            if (!s->started) {//seed 1299107795
-                if (gr) K.setRandom(gr->id());
-                else K.setRandom(0);          cout << "\nK random state set\n";
-                K.saveState();          cout << "\nK state saved\n";
+            //disorder
+            s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);
+
+            //if the append option is active, the file in path will be loaded and new data appended
+            if (opt->append) s->load(opt->path);
+            else {//generate new random state
+                s->krylov_basis[0].setRandom(id + opt->seed_system);
+
+                K.normalize(s->krylov_basis[0]);
+                s->krylov_basis[0].apply_mask(s->defects_mask);
+                s->krylov_basis[0].copy(s->initial_state);
             }
-        }
-
-        void compute_wavepacket() {
-            cout << "\nStart wavepacket\n";
-            storage* s = new storage;
-            sequence* seq = new sequence;
-            s->set(opt);
-
-            s->distributeRandomDefects(gr->id(), opt->dA, opt->dB);
-
-            seq->set(opt,s);
-
-            krylovRaum K;
-            timeEvolution U;
-            wavepacket W;
-
-            K.set(s,gr);
-            U.set(s);
-
-            //global wavepacket
-            int wx = s->k/2 - gr->gx*s->k;
-            int wy = s->k/2 - gr->gy*s->k;
-            W.set(s->vsys, s->k, wx, wy, pi/2, pi/4, 4);//sys vector, sys size, x0, y0, impuls, phi, packet width
-
-            vector<double>* stats = new vector<double>(5,0);
-            timeline* time = 0;
-            player* pl = 0;
-            if (s->opt->debug) {
-                //timeline time(800,300,6);
-                time = new timeline(800,300,6);
-                time->setVector(stats);
-                cout << "\ntimeline set\n";
-                pl = new player;
-                pl->set(seq);
-                cout << "\nplayer set\n";
-            }
-
-            seq->save();
-            seq->copyData();
-
-            //Simulation
-            for (int i=0;i<seq->lenght;i++) {
-                cout << "\nSimulation step " << i << " on " << gr->id() << "\n";
-
-                (*stats)[3] = K.process();//construct krylov basis and construct hamiltonian in krylov space
-                cplx* Vk = U.evolve(K.getHamilton());//evolve with hamiltonian from krylov space and given timestep
-                K.convert(Vk);//write new state back into world space and into the krylov basis
-
-                seq->copyData();//write in buffer
-                seq->append();//write to file
-
-                if (s->opt->debug) {
-                    (*stats)[1] = U.getDiagQ();
-                    (*stats)[0] = U.getQ();
-
-                    time->draw();
-                    time->update();
-
-                    pl->draw(0);
-
-                    if (i == 0) gr->waitforuser();
-                    cplx tmp = s->footprint();
-                    cout << "\nFootprint : " << gr->gatherSum(tmp)/4. << "   , press key to continue\n";
-                }
-                getchar();
-            }
-
-            cout << "\nSimulation end\n";
-
-        }
-
-        void propagate_wavepacket() {
-            storage* s = new storage;
-            sequence* seq = new sequence;
-            s->set(opt);
-            seq->set(opt,s);
-
-            seq->load(opt->path);
-
-            cout << "\nStart Wavepacket Propagation\n";
-            player pl;
-            pl.set(seq);
-
-            pl.play();
-
-            getchar();
-            exit(0);
         }
 
         void compute_correlation_function() {
             cout << "\nStart correlation function computation\n";
 
-            storage* s = new storage;
+            storage* s = new storage(opt);
             initRandomSystem(s);
 
             vector<double>* stats = new vector<double>(5,0);
@@ -141,33 +57,24 @@ class Simulator {
             for (int i=0,j=0; i<s->T; i++) {
 
                 //projection on root state
-                s->cf_buffer[j] = K.mult0();//MPI?
-                if (gr) cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << gr->id() << "\n";
-                else cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << 0 << "\n";
+                cplx c = s->initial_state.mult(s->krylov_basis[0]);
+                gr->gatherSum(c);
+                s->dos.buffer()[j] = c;
+
+                cout << "\nSimulation step " << i << " " << c << " on " << id << "\n";
 
                 //compute timestep
                 //construct krylov basis and construct hamiltonian in krylov space
-                (*stats)[3] = K.process();//MPI -> hamilton ist fuer alle processe gleich, deshalb zeitentwicklung identisch, kein problem
+                K.process();//MPI -> hamilton ist fuer alle processe gleich, deshalb zeitentwicklung identisch, kein problem
                 cplx* Vk = U.evolve(K.getHamilton());//evolve with hamiltonian from krylov space and given timestep
                 K.convert(Vk);//write new state back into world space and into the krylov basis
 
 
                 //flush when needed
                 j++;
-                if (i>0 and j == s->N_buffer) {
-                    if (gr->iamroot()) s->append();//MPI?
+                if (i>0 and j == opt->N_buffer) {
+                    if (id == 0) s->append();//MPI?
                     j = 0;
-                }
-
-                if (s->opt->debug) {
-                    (*stats)[1] = U.getDiagQ();
-                    (*stats)[0] = U.getQ();
-
-                    time->draw();
-                    time->update();
-
-                    cplx tmp = s->footprint();
-                    cout << "\nFootprint : " << gr->gatherSum(tmp) << "\n";
                 }
             }
             MPI_Barrier(MPI_COMM_WORLD);
@@ -177,11 +84,10 @@ class Simulator {
         void compute_dos() {
             cout << "\nStart DOS Simulation\n";
 
-            storage* s = new storage;
-            s->set(opt);
+            storage* s = new storage(opt);
 
             Zustandsdichte dos;
-            vector<string> paths = dos.getPaths(opt->path);
+            vector<string> paths = dos.getPaths(opt->path);//get all file names beginning with opt->path
             if (paths.size()==0) cout << "\nWarning! size of paths vector 0!\n";
 
 
@@ -201,71 +107,13 @@ class Simulator {
             //dos.savePlot();
         }
 
-        void compute_EV() {
-            cout << "\nStart DC computation\n";
-
-            storage* s = new storage;
-            initRandomSystem(s);
-
-            //512x512 states are 4 mb big, this means with 512 memory I can do easily 100 states
-            // per node! and flush them at the end, or with a buffer inbetween
-
-            for (int i=0,j=0; i<s->T; i++) {
-
-                //stats
-                if (gr) cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << gr->id() << "\n";
-                else cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << 0 << "\n";
-
-                //compute timestep
-                //construct krylov basis and construct hamiltonian in krylov space
-                K.process();//MPI -> hamilton ist fuer alle processe gleich, deshalb zeitentwicklung identisch, kein problem
-                cplx* Vk = U.evolve(K.getHamilton());//evolve with hamiltonian from krylov space and given timestep
-                K.convert(Vk);//write new state back into world space and into the krylov basis
-            }
-            MPI_Barrier(MPI_COMM_WORLD);
-            cout << "\nEnd eigenvector computation\n";
-        }
-
-        void compute_DC() {
-            cout << "\nStart DC computation\n";
-
-            storage* s = new storage;
-            initRandomSystem(s);
-
-            //J_x on system -> vector from options?
-            K.do_J_p0(1,0,0);
-
-            for (int i=0,j=0; i<s->T; i++) {
-
-                //projection on root state
-                s->cf_buffer[j] = K.multE();//MPI?
-
-                //stats
-                if (gr) cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << gr->id() << "\n";
-                else cout << "\nSimulation step " << i << " " << s->cf_buffer[j] << " on " << 0 << "\n";
-
-                //compute timestep
-                //construct krylov basis and construct hamiltonian in krylov space
-                K.process();//MPI -> hamilton ist fuer alle processe gleich, deshalb zeitentwicklung identisch, kein problem
-                cplx* Vk = U.evolve(K.getHamilton());//evolve with hamiltonian from krylov space and given timestep
-                K.convert(Vk);//write new state back into world space and into the krylov basis
-
-
-                //flush when needed
-                j++;
-                if (i>0 and j == s->N_buffer) {
-                    if (gr->iamroot()) s->append();//MPI?
-                    j = 0;
-                }
-            }
-            MPI_Barrier(MPI_COMM_WORLD);
-            cout << "\nEnd DC computation\n";
-        }
-
     public:
         Simulator() {
             opt = 0;
             gr = 0;
+
+            id = 0;
+            if (gr) id = gr->id();
         }
 
         void start(options* o, grid* _gr = 0) {
@@ -273,25 +121,11 @@ class Simulator {
             gr = _gr;
 
             switch (opt->job) {
-                case 'w':
-                    compute_wavepacket();
-                    break;
-                case 'v':
-                    if (gr->iamroot()) propagate_wavepacket();
-                    break;
                 case 'c':
                     compute_correlation_function();//system s, number of steps
                     break;
                 case 'd':
-                    if (gr) {
-                        if (gr->iamroot()) compute_dos();
-                    } else compute_dos();
-                    break;
-                case 'e':
-                    compute_EV();
-                    break;
-                case 't':
-                    compute_DC();
+                    if (id == 0) compute_dos();
                     break;
             }
 
