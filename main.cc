@@ -42,8 +42,10 @@ int main(int argc, char** argv) {
     options* opt = new options();
     parse_options(argc, argv, opt);
 	cout <<"\ndone with options\n";
+
     grid* gr = 0;
     if (opt->serial == 0) gr = new grid(argc, argv, opt);
+
     Simulator sim;
     sim.start(opt,gr);
 

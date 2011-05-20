@@ -208,8 +208,8 @@ class krylovRaum {
                 o_hh_o[i] = s->krylov_basis[i].mult(s->krylov_basis[0]);
                 o_hh_o[i+s->m-1] = s->krylov_basis[i].mult(s->krylov_basis[s->m-1]);
 
-                gr->gatherSum(o_hh_o[i]);
-                gr->gatherSum(o_hh_o[i+s->m-1]);
+                if(gr) gr->gatherSum(o_hh_o[i]);
+                if(gr) gr->gatherSum(o_hh_o[i+s->m-1]);
             }
 
             //gram schmidt : b(i) = H i> - |j><j Hi 0> = w(i) - ...
@@ -218,7 +218,7 @@ class krylovRaum {
                 for (i1=0; i1<s->m; i1++) {// calc b(i)
                     for (i2=0; i2<i1; i2++) {
                         c = s->krylov_basis[i2].mult(s->krylov_basis[i1]);//<j Hi 0> hier vlt mit der function khio(int k, int i) ?!? könnte viel zeit sparen!!
-                        gr->gatherSum(c);
+                        if(gr) gr->gatherSum(c);
                         for (i3=0; i3<k2; i3++) s->krylov_basis[i1][i3] -= s->krylov_basis[i2][i3] * c;//|i> -= c|j>
                     }
 
@@ -260,6 +260,8 @@ class krylovRaum {
         }
 
         void printStats() {
+            if (!s) return;
+
             long double mem = sizeof(cplx)*k2*s->m;
             long double mem_mb = mem/1048576.0;
             long double mem_gb = mem/1073741824.0;
@@ -299,7 +301,6 @@ class krylovRaum {
             k2 = s->k*s->k;
 
             H_k = new cplx[m*m];
-            //J_k = new cplx[3*m*m];
             normC = new double[m];
             o_hh_o = new cplx[2*m];
             k_h_o = new cplx[m*m+m];
@@ -328,12 +329,13 @@ class krylovRaum {
         /*cplx* getCurrent() {
             return J_k;
         }*/
-        double normalize(NVector v) {
+
+        double normalize(NVector& v) {
             long double norm;
             cplx tmp;
 
             tmp = v.mult(v);
-            gr->gatherSum(tmp);
+            if (gr) gr->gatherSum(tmp);
 
             norm = sqrt(real(tmp));
             v.normalize(norm);

@@ -20,22 +20,22 @@ class Simulator {
         int id;
 
         void initRandomSystem(storage* s) {//needs to be checked!
-            cout << "\nInit random system";
+            cout << "\nInit random system\n";
+
+            //if the append option is active, the file in path will be loaded and new data appended
+            if (opt->append) s->load(opt->path);
 
             K.set(s,gr);                cout << "\nK set\n";
             U.set(s);                   cout << "\nU set\n";
 
-            //disorder
-            s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);
+            if (!opt->append) {//generate new random state
+                s->allocate();
+                s->krylov_basis[0].setRandom(id + opt->seed_system);//system
+                s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
 
-            //if the append option is active, the file in path will be loaded and new data appended
-            if (opt->append) s->load(opt->path);
-            else {//generate new random state
-                s->krylov_basis[0].setRandom(id + opt->seed_system);
-
-                K.normalize(s->krylov_basis[0]);
+                double norm = K.normalize(s->krylov_basis[0]);
                 s->krylov_basis[0].apply_mask(s->defects_mask);
-                s->krylov_basis[0].copy(s->initial_state);
+                s->initial_state.copy(s->krylov_basis[0]);
             }
         }
 
@@ -45,20 +45,13 @@ class Simulator {
             storage* s = new storage(opt);
             initRandomSystem(s);
 
-            vector<double>* stats = new vector<double>(5,0);
-            timeline* time = 0;
-            if (s->opt->debug) {
-                time = new timeline(800,300,6);
-                time->setVector(stats);
-            }
-
             timer t0;                   cout << "\ntimer set\n";
 
             for (int i=0,j=0; i<s->T; i++) {
 
                 //projection on root state
                 cplx c = s->initial_state.mult(s->krylov_basis[0]);
-                gr->gatherSum(c);
+                if(gr) gr->gatherSum(c);
                 s->dos.buffer()[j] = c;
 
                 cout << "\nSimulation step " << i << " " << c << " on " << id << "\n";
@@ -77,8 +70,9 @@ class Simulator {
                     j = 0;
                 }
             }
+
             MPI_Barrier(MPI_COMM_WORLD);
-            cout << "\nEnd correlation function computation\n";
+            cout << "\nEnd correlation function computation after " << t0.elapsed() << " s\n";
         }
 
         void compute_dos() {
@@ -100,11 +94,6 @@ class Simulator {
             }
 
             dos.saveData("DOS");
-            //cout << "\nStart DOS Visualization\n";
-
-            //dos.draw(-3, 3, -0.1, 0.8);
-            //dos.draw(-0.2, 0.4, -0.1, 0.2);
-            //dos.savePlot();
         }
 
     public:
@@ -129,7 +118,7 @@ class Simulator {
                     break;
             }
 
-            gr->endMPI();
+            if (gr) gr->endMPI();
         }
 
 };

@@ -50,6 +50,22 @@ struct head {
         file.read((char*)this, sizeof(head));
         file.close();
     }
+
+    void printHead() {
+        cout << "\nPrint Head : ";
+        cout << "\n k " << k;
+        cout << "\n seed_disorder " << seed_disorder;
+        cout << "\n seed_system " << seed_system;
+        cout << "\n dA " << dA;
+        cout << "\n dB " << dB;
+        cout << "\n m " << m;
+        cout << "\n dt " << dt;
+        cout << "\n T " << T;
+        cout << "\n N " << N;
+        cout << "\n grid_id " << grid_id;
+        cout << "\n grid_w " << grid_w;
+        cout << "\n grid_h " << grid_h;
+    }
 };
 
 //implement addition, substraction, multiplication, etc..
@@ -105,9 +121,7 @@ struct NVector {
     }
 
     void apply_mask(NVector mask) {
-        for (int i=0;i<N;i++) {
-            v[i] = v[i]*mask.v[i];
-        }
+        for (int i=0;i<N;i++) v[i] = v[i]*mask.v[i];
     }
 
     int size() {return N;}
@@ -232,7 +246,7 @@ struct storage : public head {
         saved = false;
 
         head* h = this;
-        head* ho = opt;
+        head* ho = op;
         (*h) = (*ho);
 
         opt = op;
@@ -244,6 +258,8 @@ struct storage : public head {
         int nA_t = 0;
         int nB_t = 0;
         char l=0;
+
+        for (int i=0;i<defects_mask.size();i++) defects_mask[i] = cplx(1,0);
 
         srand(seed);
         int d_n = 0;
@@ -267,7 +283,7 @@ struct storage : public head {
 
             if (dx >= k) dx -= k - k%2;
 
-            cplx u = cplx(1,0);
+            cplx u = cplx(0,0);
 
             bool wrong=false;
             do {
@@ -284,7 +300,7 @@ struct storage : public head {
                 } else wrong=false;
             } while(wrong);
 
-            defects_mask[dx + dy*k] = 1; d_n++;
+            defects_mask[dx + dy*k] = 0; d_n++;
         }
         cout << "\nNumber of defects : " << d_n << " witch are " << 100.0*d_n/(k*k) << "%\n";
     }
@@ -292,6 +308,7 @@ struct storage : public head {
     void allocate() {
         if (k>0) {
             initial_state.allocate(k*k);
+            defects_mask.allocate(k*k);
             for (int i=0;i<m;i++) krylov_basis.push_back(NVector());
             for (int i=0;i<m;i++) krylov_basis[i].allocate(k*k);
 
@@ -304,12 +321,31 @@ struct storage : public head {
         dos.allocate(N, opt->N_buffer);
     }
 
+    void deallocate() {
+        initial_state.kill();
+        defects_mask.kill();
+        for (int i=0;i<m;i++) krylov_basis[i].kill();
+        krylov_basis = vector<NVector>();
+
+        delete[] westbound;
+        delete[] eastbound;
+        delete[] northbound;
+        delete[] southbound;
+
+        dos.kill();
+    }
+
     //speichert den aktuellen Zustand, grundzustand, und korr funktion, sowie alles weitere das für die DOS gebraucht wird
     void initial_write() {
         cout << "\nSave";
 
-        path = "cf";
+        path = "results/cf";
         path += getPath();
+
+        //create file!
+        ofstream of(path.c_str(), fstream::out | fstream::binary);
+        of.close();
+
         writeHead(path);
 
         saved = true;
@@ -331,13 +367,22 @@ struct storage : public head {
         writeHead(path);
 
         krylov_basis[0].save(path, ios_base::beg + sizeof(head) + 2*k2*sizeof(cplx));
+
+        //cout << "\nprint is : "; for (int i=0;i<2;i++) cout << "  " << initial_state[i];
+        //cout << "\nprint dm : "; for (int i=0;i<2;i++) cout << "  " << defects_mask[i];
+        //cout << "\nprint v : "; for (int i=0;i<2;i++) cout << "  " << krylov_basis[0][i];
+
         dos.append(path);
     }
 
     void load(string _path) {
+        if (saved) deallocate();
+
         path = _path;
-        cout << "\nload file\n";
+        cout << "\nload file " << path << "\n";
         readHead(path);
+        printHead();
+
         allocate();
 
         saved = true;
@@ -347,6 +392,11 @@ struct storage : public head {
         defects_mask.load(path, ios_base::beg + sizeof(head) + k2*sizeof(cplx));
         krylov_basis[0].load(path, ios_base::beg + sizeof(head) + 2*k2*sizeof(cplx));
         dos.load(path, ios_base::beg + sizeof(head) + 3*k2*sizeof(cplx));
+
+        //cout << "\nprint is : "; for (int i=0;i<2;i++) cout << "  " << initial_state[i];
+        //cout << "\nprint dm : "; for (int i=0;i<2;i++) cout << "  " << defects_mask[i];
+        //cout << "\nprint v : "; for (int i=0;i<2;i++) cout << "  " << krylov_basis[0][i];
+        //for (int i=0;i<10;i++) cout << "\ndos " << dos[i];
     }
 };
 
