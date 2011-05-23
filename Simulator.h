@@ -110,7 +110,7 @@ class Simulator {
 
             //gaus wave packet
             wavepacket w;
-            w.set(s->krylov_basis[0].data(), s->k, x0, x0, 0, 0, 1.5);
+            w.set(s->krylov_basis[0].data(), s->k, x0, x0, 0, 0, 2);
 
 
             s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
@@ -121,7 +121,7 @@ class Simulator {
             //------------------end preparation-------------------
 
             //build D(r,t) matrix
-            int t_min = 3;//1./s->dt;//1 is the time I wait before taking data
+            int t_min = 5./s->dt;//x/dt where x is the total time I wait before taking data
             s->N = opt->R*(s->T-t_min);
             s->dos.allocate(s->N, 1);//use the dos vector for the diffusion constant
 
@@ -141,7 +141,7 @@ class Simulator {
                     //pnt at r taken from zigzag edge
                     for (int r=0; r<opt->R; r++) {
                         cplx c = s->krylov_basis[0][r0+r*2];//r*2 damit die punkte geometrisch auf einer reihe liegen!
-                        s->dos[(t-t_min)*opt->R + r] = c;
+                        s->dos[t-t_min + r*(s->T-t_min)] = c;
                     }
                 }
             }
@@ -150,8 +150,12 @@ class Simulator {
             path += s->getPath();
 
             ofstream file(path.c_str());
-            for (int i=0;i<s->N;i++) file << "\n" << ((i/opt->R + t_min)*s->dt) << " " << (sqrt(norm(s->dos[i])));
-            //for (int i=0;i<s->N;i++) file << "\n" << (i/opt->R + t_min)*s->dt << " " << real(s->dos[i]) << " " << imag(s->dos[i]) << " " << norm(s->dos[i]);
+            for (int i=0;i<s->N;i++) {
+                if (i%(s->T-t_min) == 0 and i>0) file << "\n";
+                double _t = (i%(s->T-t_min) + t_min)*s->dt;
+                double _v = (sqrt(norm(s->dos[i])));
+                file << "\n" << log(_t) << " " << log(_v);
+            }
             file.close();
         }
 
