@@ -2,7 +2,6 @@
 #define KRYLOV_H_INCLUDED
 
 #include "storage.h"
-#include "cimgVisual.h"
 
 using namespace std;
 
@@ -24,7 +23,7 @@ class krylovRaum {
 
         cplx khio(int k, int i) {
             cplx c = o_hh_o[k+i];
-            for (int kk = 0; kk<k; kk++) c -= conj(k_h_o[k*s->m+kk]) * k_h_o[i*s->m+kk];
+            for (int j = 0; j<k; j++) c -= conj(k_h_o[k*s->m+j]) * k_h_o[i*s->m+j];
             c *= 1./normC[k];
             return c;
         }
@@ -217,7 +216,8 @@ class krylovRaum {
             {
                 for (i1=0; i1<s->m; i1++) {// calc b(i)
                     for (i2=0; i2<i1; i2++) {
-                        c = s->krylov_basis[i2].mult(s->krylov_basis[i1]);//<j Hi 0> hier vlt mit der function khio(int k, int i) ?!? könnte viel zeit sparen!!
+                        //c = s->krylov_basis[i2].mult(s->krylov_basis[i1]);//<j Hi 0>
+                        c = khio(i2, i1);
                         if(gr) gr->gatherSum(c);
                         for (i3=0; i3<k2; i3++) s->krylov_basis[i1][i3] -= s->krylov_basis[i2][i3] * c;//|i> -= c|j>
                     }

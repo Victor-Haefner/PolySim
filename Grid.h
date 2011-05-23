@@ -104,13 +104,13 @@ class grid {
             MPI_Isend (s->southbound+s->k, s->k, type, north, tag, MPI_COMM_WORLD, &request[3]);//send my souths
             MPI_Recv (s->northbound, s->k, type, south, tag, MPI_COMM_WORLD, &status);
 
-	    //cout << "\nProcess " << process_i << " received all and waits\n";
+            //cout << "\nProcess " << process_i << " received all and waits\n";
 
             MPI_Barrier(MPI_COMM_WORLD);
-	    //cout << "\nProcess " << process_i << " done waiting\n";
+            //cout << "\nProcess " << process_i << " done waiting\n";
 
-	    //check the request objects to free internal memory
-	    MPI_Waitall(4, request, MPI_STATUSES_IGNORE);
+            //check the request objects to free internal memory
+            MPI_Waitall(4, request, MPI_STATUSES_IGNORE);
         }
 
         cplx gatherSum(cplx& c) {

@@ -31,6 +31,7 @@ void parse_options(int argc, char **argv, options* opt) {
         ("seed_system", bpo::value<int>(), "system seed")
         ("seed_disorder", bpo::value<int>(), "disorder seed")
         ("dos_crop", bpo::value<float>(), "nimmt nicht alle zeitschritte mit")
+        ("dis_r", bpo::value<int>(), "dispersion R max")
     ;
 
     bpo::variables_map vm;
@@ -74,6 +75,9 @@ void parse_options(int argc, char **argv, options* opt) {
     //specific defects
     if (vm.count("defects_A")) opt->dA = vm["defects_A"].as<float>();
     if (vm.count("defects_B")) opt->dB = vm["defects_B"].as<float>();
+
+
+    if (vm.count("dis_r")) opt->R = vm["dis_r"].as<int>();
 
     //cout << "\nopt sys size : " << opt->k << "\n";
     //cout << "\nopt grid w : " << opt->grid_w << "\n";

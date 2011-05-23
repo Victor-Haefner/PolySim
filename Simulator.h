@@ -5,10 +5,8 @@
 #include "Grid.h"
 #include "krylov.h"
 #include "Zustandsdichte.h"
-#include "cimgVisual.h"
 #include "Wavepacket.h"
 #include "Timeevolution.h"
-#include "Waveplayer.h"
 
 class Simulator {
         options* opt;
@@ -33,8 +31,8 @@ class Simulator {
                 s->krylov_basis[0].setRandom(id + opt->seed_system);//system
                 s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
 
-                double norm = K.normalize(s->krylov_basis[0]);
                 s->krylov_basis[0].apply_mask(s->defects_mask);
+                K.normalize(s->krylov_basis[0]);
                 s->initial_state.copy(s->krylov_basis[0]);
             }
         }
@@ -71,7 +69,7 @@ class Simulator {
                 }
             }
 
-            MPI_Barrier(MPI_COMM_WORLD);
+            if (gr) MPI_Barrier(MPI_COMM_WORLD);
             cout << "\nEnd correlation function computation after " << t0.elapsed() << " s\n";
         }
 
@@ -93,7 +91,69 @@ class Simulator {
                 dos.process(opt->dos_crop);
             }
 
-            dos.saveData("DOS");
+            dos.saveDosE("DOS");
+        }
+
+        void compute_diffusion_constant() {
+
+            storage* s = new storage(opt);
+            K.set(s,gr);                cout << "\nK set\n";
+            U.set(s);                   cout << "\nU set\n";
+
+            s->allocate();
+
+            int x0 = s->k/2;
+            int r0 = x0*s->k + x0;
+
+            //delta peak
+            //s->krylov_basis[0].setDelta(r0);
+
+            //gaus wave packet
+            wavepacket w;
+            w.set(s->krylov_basis[0].data(), s->k, x0, x0, 0, 0, 2);
+
+
+            s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
+            s->krylov_basis[0].apply_mask(s->defects_mask);
+            K.normalize(s->krylov_basis[0]);
+            s->initial_state.copy(s->krylov_basis[0]);
+
+            //------------------end preparation-------------------
+
+            //build D(r,t) matrix
+            int t_min = 1./s->dt;//1 is the time I wait before taking data
+            s->N = opt->R*(s->T-t_min);
+            s->dos.allocate(s->N, 1);//use the dos vector for the diffusion constant
+
+            //distance from wave origin
+            for (int t=0;t<s->T;t++) {//propagate in time
+                cout << "\nSim t " << t;
+
+                //compute timestep
+                //construct krylov basis and construct hamiltonian in krylov space
+                K.process();//MPI -> hamilton ist fuer alle processe gleich, deshalb zeitentwicklung identisch, kein problem
+                cplx* Vk = U.evolve(K.getHamilton());//evolve with hamiltonian from krylov space and given timestep
+                K.convert(Vk);//write new state back into world space and into the krylov basis
+
+                if (t >= t_min) {//let it propagate for a given total time before taking data
+                    //corr fkt?
+                    //cplx c = s->initial_state.mult(s->krylov_basis[0]);
+                    //if(gr) gr->gatherSum(c);//distribute the result over the grid
+                    //s->dos.buffer()[j] = c;
+
+                    //pnt at r taken from zigzag edge
+                    for (int r=0;r<opt->R;r++) {
+                        s->dos[(t-t_min)*opt->R + r] = s->krylov_basis[0][r0+r*2];//r*2 damit die punkte geometrisch auf einer rheie liegen!
+                    }
+                }
+            }
+
+            string path = "D_rt_";
+            path += s->getPath();
+
+            ofstream file(path.c_str());
+            for (int i=0;i<s->N;i++) file << "\n" << (i/opt->R + t_min)*s->dt << " " << real(s->dos[i]) << " " << imag(s->dos[i]) << " " << norm(s->dos[i]);
+            file.close();
         }
 
     public:
@@ -102,12 +162,12 @@ class Simulator {
             gr = 0;
 
             id = 0;
-            if (gr) id = gr->id();
         }
 
         void start(options* o, grid* _gr = 0) {
             opt = o;
             gr = _gr;
+            if (gr) id = gr->id();
 
             switch (opt->job) {
                 case 'c':
@@ -115,6 +175,9 @@ class Simulator {
                     break;
                 case 'd':
                     if (id == 0) compute_dos();
+                    break;
+                case 'w':
+                    compute_diffusion_constant();
                     break;
             }
 

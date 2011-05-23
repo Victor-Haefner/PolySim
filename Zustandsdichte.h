@@ -16,8 +16,6 @@ class Zustandsdichte {
         cplx* ffout;
         cplx* time;
 
-        graph* gr;//visualisierung
-
         void writeData(string datapath, cplx* data, long n) {
             ofstream file(datapath.c_str(), ios::out | ios::binary);
             file.write((char*)data, n*sizeof(cplx));
@@ -30,6 +28,15 @@ class Zustandsdichte {
             file.read((char*)data, n*sizeof(cplx));
             file.close();
             cout << "  done";
+        }
+
+        //save the complex vector in ascii
+        void saveData(string path, cplx* vec, cplx* t) {
+            path += s->getPath();
+
+            ofstream file(path.c_str());
+            for (int i=0;i<s->N;i++) file << "\n" << real(t[i]) << " " << real(vec[i]) << " " << imag(vec[i]) << " " << norm(vec[i]);
+            file.close();
         }
 
         long getDataLenght(string datapath) {
@@ -69,8 +76,6 @@ class Zustandsdichte {
             ffin = 0;
             ffout = 0;
             time = 0;
-
-            gr = 0;
         }
 
         ~Zustandsdichte() {
@@ -107,10 +112,9 @@ class Zustandsdichte {
             if (dos_crop>1) dos_crop=1;
             int N = s->N*dos_crop;
 
-            for (int i=0;i<N;i++) add(i,s->dos[i], N);
+            saveDosRT("DOS_in", N);
 
-            //output start vector
-            saveData("DOS_in", ffin);
+            for (int i=0;i<N;i++) add(i,s->dos[i], N);
 
             cout << "\nStart FFTW\n";
 
@@ -124,6 +128,15 @@ class Zustandsdichte {
 
             cout << "\nOffset Control : " << ffout[0] << " " << s->dt/pi/2 << "\n";
             for (int i=0;i<N;i++) ffout[i] -= ffout[N-1];//subtract offset!
+        }
+
+        void saveDosRT(string path, int n) {
+            for (int i=0;i<n;i++) time[i] = i*s->dt;
+            saveData(path, s->dos.data(), time);
+        }
+
+        void saveDosE(string path) {
+            saveData(path, ffout, time);
         }
 
         vector<string> getPaths(string subpath) {
@@ -175,36 +188,12 @@ class Zustandsdichte {
             return;
         }
 
-        void draw(float x1, float x2, float y1, float y2) {
-            gr = new graph(800, 600);
-            //gr->setVector(s->N, time, ffin, x1, x2, y1, y2, 255, 0, 0);
-            gr->setVector(s->N, time, ffout, x1, x2, y1, y2, 255, 0, 0);
-            gr->draw();
-        }
-
         void reset() {//setzt in und output auf 0
             for (int i=0;i<s->N;i++) {
                 time[i] = 0;
                 ffin[i] = 0;
                 ffout[i] = 0;
             }
-        }
-
-        //save the computed DOS in ascii
-        void saveData(string path, cplx* vec = 0) {
-            if (vec==0) vec=ffout;
-
-            char ctmp[100];
-            sprintf(ctmp, "%ix%i_A%f\%_B%f\%_seedS%i_seedD%i_%d.dat", s->k*s->grid_w, s->k*s->grid_h, s->dA*100, s->dB*100, s->seed_system, s->seed_disorder, (int)std::time(0));
-            path += string(ctmp);
-
-            ofstream file(path.c_str());
-            //for (int i=0;i<s->N;i++) file << "\n" << real(time[i]) << " " << real(vec[i]);
-            for (int i=0;i<s->N;i++) file << "\n" << real(time[i]) << " " << real(vec[i]) << " " << imag(vec[i]) << " " << norm(vec[i]);
-        }
-
-        void savePlot() {
-            if (gr != 0) gr->saveCanvas("StateDensity.png");
         }
 };
 

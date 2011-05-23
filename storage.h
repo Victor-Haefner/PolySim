@@ -216,6 +216,9 @@ struct options : public head {
     bool serial;
     bool graphene;
     bool debug;
+
+    //dispersion constant
+    int R;
 };
 
 //everything for the krylov basis
@@ -365,13 +368,7 @@ struct storage : public head {
 
         //rewrite head to change N
         writeHead(path);
-
         krylov_basis[0].save(path, ios_base::beg + sizeof(head) + 2*k2*sizeof(cplx));
-
-        //cout << "\nprint is : "; for (int i=0;i<2;i++) cout << "  " << initial_state[i];
-        //cout << "\nprint dm : "; for (int i=0;i<2;i++) cout << "  " << defects_mask[i];
-        //cout << "\nprint v : "; for (int i=0;i<2;i++) cout << "  " << krylov_basis[0][i];
-
         dos.append(path);
     }
 
@@ -381,7 +378,7 @@ struct storage : public head {
         path = _path;
         cout << "\nload file " << path << "\n";
         readHead(path);
-        printHead();
+        //printHead();
 
         allocate();
 
@@ -392,11 +389,6 @@ struct storage : public head {
         defects_mask.load(path, ios_base::beg + sizeof(head) + k2*sizeof(cplx));
         krylov_basis[0].load(path, ios_base::beg + sizeof(head) + 2*k2*sizeof(cplx));
         dos.load(path, ios_base::beg + sizeof(head) + 3*k2*sizeof(cplx));
-
-        //cout << "\nprint is : "; for (int i=0;i<2;i++) cout << "  " << initial_state[i];
-        //cout << "\nprint dm : "; for (int i=0;i<2;i++) cout << "  " << defects_mask[i];
-        //cout << "\nprint v : "; for (int i=0;i<2;i++) cout << "  " << krylov_basis[0][i];
-        //for (int i=0;i<10;i++) cout << "\ndos " << dos[i];
     }
 };
 

@@ -5,10 +5,10 @@
 
 using namespace std;
 
-class Current : public krylovRaum {
+class Diffusion {
     private:
     public:
-        Current() {
+        Diffusion() {
             ;
         }
 };
