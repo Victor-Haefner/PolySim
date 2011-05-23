@@ -110,7 +110,7 @@ class Simulator {
 
             //gaus wave packet
             wavepacket w;
-            w.set(s->krylov_basis[0].data(), s->k, x0, x0, 0, 0, 2);
+            w.set(s->krylov_basis[0].data(), s->k, x0, x0, 0, 0, 1.5);
 
 
             s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
@@ -121,9 +121,11 @@ class Simulator {
             //------------------end preparation-------------------
 
             //build D(r,t) matrix
-            int t_min = 1./s->dt;//1 is the time I wait before taking data
+            int t_min = 3;//1./s->dt;//1 is the time I wait before taking data
             s->N = opt->R*(s->T-t_min);
             s->dos.allocate(s->N, 1);//use the dos vector for the diffusion constant
+
+            cplx c0 = conj(s->krylov_basis[0][r0]);
 
             //distance from wave origin
             for (int t=0;t<s->T;t++) {//propagate in time
@@ -136,14 +138,10 @@ class Simulator {
                 K.convert(Vk);//write new state back into world space and into the krylov basis
 
                 if (t >= t_min) {//let it propagate for a given total time before taking data
-                    //corr fkt?
-                    //cplx c = s->initial_state.mult(s->krylov_basis[0]);
-                    //if(gr) gr->gatherSum(c);//distribute the result over the grid
-                    //s->dos.buffer()[j] = c;
-
                     //pnt at r taken from zigzag edge
-                    for (int r=0;r<opt->R;r++) {
-                        s->dos[(t-t_min)*opt->R + r] = s->krylov_basis[0][r0+r*2];//r*2 damit die punkte geometrisch auf einer rheie liegen!
+                    for (int r=0; r<opt->R; r++) {
+                        cplx c = s->krylov_basis[0][r0+r*2];//r*2 damit die punkte geometrisch auf einer reihe liegen!
+                        s->dos[(t-t_min)*opt->R + r] = c;
                     }
                 }
             }
@@ -152,7 +150,8 @@ class Simulator {
             path += s->getPath();
 
             ofstream file(path.c_str());
-            for (int i=0;i<s->N;i++) file << "\n" << (i/opt->R + t_min)*s->dt << " " << real(s->dos[i]) << " " << imag(s->dos[i]) << " " << norm(s->dos[i]);
+            for (int i=0;i<s->N;i++) file << "\n" << ((i/opt->R + t_min)*s->dt) << " " << (sqrt(norm(s->dos[i])));
+            //for (int i=0;i<s->N;i++) file << "\n" << (i/opt->R + t_min)*s->dt << " " << real(s->dos[i]) << " " << imag(s->dos[i]) << " " << norm(s->dos[i]);
             file.close();
         }
 
