@@ -194,9 +194,6 @@ class krylovRaum {
         }
 
         double computeBasis() {
-            //normalize v0
-            normalize(s->krylov_basis[0]);
-            normC[0] = 1;
 
             //calc v Hv HHv HHHv ...
             if (s->opt->serial) for (int i=0;i<s->m-1;i++) HPsi_serial(s->krylov_basis[i], s->krylov_basis[i+1]);
@@ -214,7 +211,7 @@ class krylovRaum {
             //gram schmidt : b(i) = H i> - |j><j Hi 0> = w(i) - ...
             cplx c; int i1,i2,i3;
             {
-                for (i1=0; i1<s->m; i1++) {// calc b(i)
+                for (i1=1; i1<s->m; i1++) {// calc b(i)
                     for (i2=0; i2<i1; i2++) {
                         //c = s->krylov_basis[i2].mult(s->krylov_basis[i1]);//<j Hi 0>
                         c = khio(i2, i1);
@@ -304,6 +301,8 @@ class krylovRaum {
             normC = new double[m];
             o_hh_o = new cplx[2*m];
             k_h_o = new cplx[m*m+m];
+
+            normC[0] = 1;//norm of state allways one!
         }
 
         double process() {

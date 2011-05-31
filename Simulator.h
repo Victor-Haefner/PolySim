@@ -7,6 +7,7 @@
 #include "Zustandsdichte.h"
 #include "Wavepacket.h"
 #include "Timeevolution.h"
+#include "recorder.h"
 
 class Simulator {
         options* opt;
@@ -159,6 +160,52 @@ class Simulator {
             file.close();
         }
 
+        void propagate_wavepacket() {
+            cout << "\nPropagate Wavepacket\n";
+
+            storage* s = new storage(opt);
+            K.set(s,gr);                cout << "\nK set\n";
+            U.set(s);                   cout << "\nU set\n";
+
+            s->allocate();
+            s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
+
+            int x0 = s->k/2;
+            int y0 = x0;
+
+            //gaus wave packet
+            wavepacket w;
+
+            //-----------SCENARIOS-------------------------------------------------------------
+            //zerfliessendes gaus packet in der mitte
+            //w.set(s->krylov_basis[0].data(), s->k, x0, y0, 0, 0, 2);
+
+            //propagierendes packet
+            w.set(s->krylov_basis[0].data(), s->k, x0-15, y0, 1, 0, 2);
+
+            //defekt in der mitte
+            s->defects_mask[s->k*y0+x0] = cplx(0,0);
+            //---------------------------------------------------------------------------------
+
+            s->krylov_basis[0].apply_mask(s->defects_mask);
+            K.normalize(s->krylov_basis[0]);
+
+            recorder rec;
+            rec.set(s->krylov_basis[0].data(), s->defects_mask.data(), s->k, x0-30, y0-30, x0+30, y0+30);//nehme einf enster der groeße 100x100 auf
+
+            for (int t=0;t<s->T;t++) {//propagate in time
+                cout << "\nSim t " << t;
+
+                //compute timestep
+                //construct krylov basis and construct hamiltonian in krylov space
+                K.process();//MPI -> hamilton ist fuer alle processe gleich, deshalb zeitentwicklung identisch, kein problem
+                cplx* Vk = U.evolve(K.getHamilton());//evolve with hamiltonian from krylov space and given timestep
+                K.convert(Vk);//write new state back into world space and into the krylov basis
+
+                rec.take("test.vid");
+            }
+        }
+
     public:
         Simulator() {
             opt = 0;
@@ -181,6 +228,9 @@ class Simulator {
                     break;
                 case 'w':
                     compute_diffusion_constant();
+                    break;
+                case 'p':
+                    propagate_wavepacket();
                     break;
             }
 

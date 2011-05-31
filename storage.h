@@ -303,7 +303,7 @@ struct storage : public head {
                 } else wrong=false;
             } while(wrong);
 
-            defects_mask[dx + dy*k] = 0; d_n++;
+            defects_mask[dx + dy*k] = cplx(0,0); d_n++;
         }
         cout << "\nNumber of defects : " << d_n << " witch are " << 100.0*d_n/(k*k) << "%\n";
     }
