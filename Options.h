@@ -32,6 +32,9 @@ void parse_options(int argc, char **argv, options* opt) {
         ("seed_disorder", bpo::value<int>(), "disorder seed")
         ("dos_crop", bpo::value<float>(), "nimmt nicht alle zeitschritte mit")
         ("dif_r", bpo::value<int>(), "diffusion R max")
+        ("frame_skip", bpo::value<int>(), "frames between two takes of the recorder")
+        ("frame_w", bpo::value<int>(), "width of recorded frames")
+        ("frame_h", bpo::value<int>(), "height of recorded frames")
     ;
 
     bpo::variables_map vm;
@@ -78,10 +81,9 @@ void parse_options(int argc, char **argv, options* opt) {
 
 
     if (vm.count("dif_r")) opt->R = vm["dif_r"].as<int>();
-
-    //cout << "\nopt sys size : " << opt->k << "\n";
-    //cout << "\nopt grid w : " << opt->grid_w << "\n";
-    //cout << "\nopt grid h : " << opt->grid_h << "\n";
+    if (vm.count("frame_skip")) opt->frame_skip = vm["frame_skip"].as<int>();
+    if (vm.count("frame_w")) opt->frame_w = vm["frame_w"].as<int>();
+    if (vm.count("frame_h")) opt->frame_h = vm["frame_h"].as<int>();
 }
 
 

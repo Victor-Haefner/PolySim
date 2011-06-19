@@ -25,7 +25,14 @@ class recorder {
 
         void append(string path) {
             ofstream file(path.c_str(), fstream::out | fstream::binary | fstream::app);
-            for (int i=0;i<rN;i++)  file.write((char*)rows[i], cN*sizeof(cplx));
+
+            float* tmp = new float[cN];
+            for (int i=0;i<rN;i++)  {
+                for (int j=0;j<cN;j++)  tmp[j] = sqrt(std::norm(rows[i][j]));
+                file.write((char*)tmp, cN*sizeof(float));
+            }
+            delete[] tmp;
+
             file.close();
         }
 

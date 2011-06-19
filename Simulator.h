@@ -178,20 +178,36 @@ class Simulator {
 
             //-----------SCENARIOS-------------------------------------------------------------
             //zerfliessendes gaus packet in der mitte
-            //w.set(s->krylov_basis[0].data(), s->k, x0, y0, 0, 0, 2);
+            w.set(s->krylov_basis[0].data(), s->k, x0, y0, 0, 0, 2);
 
+
+
+
+            //defekt in der mitte------------------------------------------------------------------
             //propagierendes packet
-            w.set(s->krylov_basis[0].data(), s->k, x0-15, y0, 1, 0, 2);
-
-            //defekt in der mitte
-            s->defects_mask[s->k*y0+x0] = cplx(0,0);
+            //w.set(s->krylov_basis[0].data(), s->k, x0-15, y0, 1, 0, 2);
+            //s->defects_mask[s->k*y0+x0] = cplx(0,0);
             //---------------------------------------------------------------------------------
+
+
+
+            //double split---------------------------------------------------------------------
+            /*w.set(s->krylov_basis[0].data(), s->k, x0-15, y0, 1, 0, 2);
+            for (int i=0;i<50;i++)
+                if (i!=3) { s->defects_mask[s->k*(y0+i)+x0] = cplx(0,0); s->defects_mask[s->k*(y0-i)+x0] = cplx(0,0); }
+            for (int i=0;i<15;i++)
+                { s->defects_mask[s->k*(y0+i)+x0-30] = cplx(0,0); s->defects_mask[s->k*(y0-i)+x0-30] = cplx(0,0); }
+            for (int i=0;i<30;i++)
+                { s->defects_mask[s->k*(y0+14)+x0-30+i] = cplx(0,0); s->defects_mask[s->k*(y0-14)+x0-30+i] = cplx(0,0); }*/
+            //---------------------------------------------------------------------------------
+
+
 
             s->krylov_basis[0].apply_mask(s->defects_mask);
             K.normalize(s->krylov_basis[0]);
 
             recorder rec;
-            rec.set(s->krylov_basis[0].data(), s->defects_mask.data(), s->k, x0-30, y0-30, x0+30, y0+30);//nehme einf enster der groeße 100x100 auf
+            rec.set(s->krylov_basis[0].data(), s->defects_mask.data(), s->k, x0 - opt->frame_w/2, y0 - opt->frame_h/2, x0 + opt->frame_w/2, y0 + opt->frame_h/2);//nehme einf enster der groeße 100x100 auf
 
             for (int t=0;t<s->T;t++) {//propagate in time
                 cout << "\nSim t " << t;
@@ -202,7 +218,7 @@ class Simulator {
                 cplx* Vk = U.evolve(K.getHamilton());//evolve with hamiltonian from krylov space and given timestep
                 K.convert(Vk);//write new state back into world space and into the krylov basis
 
-                rec.take("test.vid");
+                if (t%opt->frame_skip == 0) rec.take("test.vid");
             }
         }
 

@@ -219,6 +219,11 @@ struct options : public head {
 
     //dispersion constant
     int R;
+
+    //recorder options
+    int frame_skip;
+    int frame_w;
+    int frame_h;
 };
 
 //everything for the krylov basis
