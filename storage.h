@@ -4,156 +4,118 @@
 #include <stddef.h>
 #include <sys/types.h>
 #include <dirent.h>
-
-struct head {
-    //system, seeds, disorder
-    int k;//system size kxk
-    int seed_system;
-    int seed_disorder;
-    float dA;
-    float dB;
-
-    //simulation
-    int m;//krylov dimension
-    float dt;//timestep
-    int T;//total timesteps to perform
-
-    //final results
-    int N;//korrelation funktion size
-
-    //mpi variables
-    int grid_id; //grid id, needed to resume or append
-    int grid_w;
-    int grid_h;
-
-    string getPath() {//BS
-        char path[200];
-        sprintf(path, "%ix%ion%ix%i_ID%i_A%f\%_B%f\%_m%i_dt%f_T%i_%d.bin", k*grid_w, k*grid_h, grid_w, grid_h, grid_id, dA*100, dB*100, m, dt, T, (int)time(0));
-        return string(path);
-    }
-
-    void writeHead(string path) {
-        ofstream file(path.c_str(), fstream::in | fstream::out | fstream::binary);
-        file.seekp(ios_base::beg);
-        file.write((char*)this, sizeof(head));
-        file.close();
-    }
-
-    void readHead(string path) {
-        ifstream file(path.c_str(), fstream::in | fstream::binary);
-        if (!file.is_open()) {
-            cout << "\nError while loading state, no file " << path << "\n";
-            return;
-        }
-
-        file.seekg(ios_base::beg);
-        file.read((char*)this, sizeof(head));
-        file.close();
-    }
-
-    void printHead() {
-        cout << "\nPrint Head : ";
-        cout << "\n k " << k;
-        cout << "\n seed_disorder " << seed_disorder;
-        cout << "\n seed_system " << seed_system;
-        cout << "\n dA " << dA;
-        cout << "\n dB " << dB;
-        cout << "\n m " << m;
-        cout << "\n dt " << dt;
-        cout << "\n T " << T;
-        cout << "\n N " << N;
-        cout << "\n grid_id " << grid_id;
-        cout << "\n grid_w " << grid_w;
-        cout << "\n grid_h " << grid_h;
-    }
-};
+#include "Grid.h"
 
 //implement addition, substraction, multiplication, etc..
-struct NVector {
-    cplx* v;
-    int N;
+class state {
+    public:
+        cplx* v;
+        int N;
 
-    void allocate(int n) {
-        N = n;
-        v = new cplx[n];
-        for (int i=0;i<N;i++) v[i] = 0;
-    }
+        mpi_grid* grid;
 
-    void kill() { delete[] v; }
-
-    void save(string path, int offset) {
-        ofstream ofile(path.c_str(), fstream::in | fstream::out | fstream::binary);
-        ofile.seekp(ios_base::beg + offset);
-        ofile.write((char*)v, N*sizeof(cplx));
-        ofile.close();
-    }
-
-    void load(string path, int offset) {
-        //exit if not present
-        ifstream ifile(path.c_str(), fstream::in | fstream::binary);
-        if (!ifile.is_open()) {
-            cout << "\nError while loading state, no file " << path << "\n";
-            exit(0);
+        state() {
+            v = 0;
+            N = 0;
+            grid = mpi_grid::get();
         }
 
-        ifile.seekg(offset);
-        ifile.read((char*)v, N*sizeof(cplx));
-        ifile.close();
-    }
-
-    void setRandom(int seed) {
-        srand(seed);
-        float rm = RAND_MAX;
-
-        for (int i=0;i<N;i++) {
-            float a = rand() - rm/2;
-            float b = rand() - rm/2;
-            cplx cab = cplx(a,b);
-            v[i] = cab*(1./rm);
+        void allocate(int n) {
+            N = n;
+            v = new cplx[n];
+            for (int i=0;i<N;i++) v[i] = 0;
         }
-    }
 
-    void setDelta(int i) {
-        for (int j=0;j<N;j++) {
-            v[j] = 0;
+        void kill() { delete[] v; }
+
+        void save(string path, int offset) {
+            ofstream ofile(path.c_str(), fstream::in | fstream::out | fstream::binary);
+            ofile.seekp(ios_base::beg + offset);
+            ofile.write((char*)v, N*sizeof(cplx));
+            ofile.close();
         }
-        v[i] = 1;
-    }
 
-    void apply_mask(NVector mask) {
-        for (int i=0;i<N;i++) v[i] = v[i]*mask.v[i];
-    }
+        void load(string path, int offset) {
+            //exit if not present
+            ifstream ifile(path.c_str(), fstream::in | fstream::binary);
+            if (!ifile.is_open()) {
+                cout << "\nError while loading state, no file " << path << "\n";
+                exit(0);
+            }
 
-    int size() {return N;}
+            ifile.seekg(offset);
+            ifile.read((char*)v, N*sizeof(cplx));
+            ifile.close();
+        }
 
-    cplx* data() {return v;}
+        void setRandom(int seed) {
+            srand(seed);
+            float rm = RAND_MAX;
 
-    cplx& operator[](int i) { return v[i]; }
+            for (int i=0;i<N;i++) {
+                float a = rand() - rm/2;
+                float b = rand() - rm/2;
+                cplx cab = cplx(a,b);
+                v[i] = cab*(1./rm);
+            }
+        }
+
+        void setDelta(int i) {
+            for (int j=0;j<N;j++) {
+                v[j] = 0;
+            }
+            v[i] = 1;
+        }
+
+        void apply_mask(state mask) {
+            for (int i=0;i<N;i++) v[i] = v[i]*mask.v[i];
+        }
+
+        int size() {return N;}
+
+        cplx* data() {return v;}
+
+        cplx& operator[](int i) { return v[i]; }
 
 
-    //--------------MATH-------------------
+        //--------------MATH-------------------
 
-    cplx mult(NVector _v) {
-        if (_v.N != N) cout << "\nWarning! in fkt mult, sizes of vectors don't match!\n";
+        cplx mult(state _v) {
+            if (_v.N != N) cout << "\nWarning! in fkt mult, sizes of vectors don't match!\n";
 
-        cplx c(0,0);
+            cplx c(0,0);
 
-        for (int i=0; i<N; i++) c += std::conj(v[i]) * _v.v[i];
+            for (int i=0; i<N; i++) c += std::conj(v[i]) * _v.v[i];
 
-        return c;
-    }
+            if (grid != 0) return grid->gatherSum(c);
+            else return c;
+        }
 
-    void normalize(double norm) {
-        if (norm < 1e-15) cout << "\nWarning! norm of Vector nearly zero in fkt normalize!\n";
-        for (int i=0;i<N;i++) v[i] /= norm;
-    }
+        cplx norm() {
+            return mult(*this);
+        }
 
-    void copy(NVector _v) {
-        if (_v.N != N) cout << "\nWarning! in fkt mult, sizes of vectors don't match!\n";
-        for (int i=0;i<N;i++) v[i] = _v.v[i];
-    }
+        double normalize() {
+            double n = sqrt(real(norm()));
+            if (n < 1e-15) cout << "\nWarning! norm of Vector nearly zero in fkt normalize!\n";
+            for (int i=0;i<N;i++) v[i] /= n;
+            return n;
+        }
 
-    void conjugate() { for (int i=0;i<N;i++) v[i] = std::conj(v[i]); }
+        cplx sqsum() {
+            cplx c = cplx(0,0);
+            for (int i=0;i<N;i++) c += std::norm(v[i]);
+
+            if (grid != 0) return grid->gatherSum(c);
+            else return c;
+        }
+
+        void copy(state _v) {
+            if (_v.N != N) cout << "\nWarning! in fkt mult, sizes of vectors don't match!\n";
+            for (int i=0;i<N;i++) v[i] = _v.v[i];
+        }
+
+        void conjugate() { for (int i=0;i<N;i++) v[i] = std::conj(v[i]); }
 
 };
 
@@ -206,35 +168,15 @@ struct corrFkt {
     cplx& operator[](int i) { return corrfunc[i]; }
 };
 
-struct options : public head {
-    char job;
-    string path;//datapath
-    int N_buffer;//buffer
-    float dos_crop;
-
-    bool append;
-    bool serial;
-    bool graphene;
-    bool debug;
-
-    //dispersion constant
-    int R;
-
-    //recorder options
-    int frame_skip;
-    int frame_w;
-    int frame_h;
-};
-
 //everything for the krylov basis
 struct storage : public head {
     options* opt;
     bool saved;
     string path;
 
-    NVector initial_state;
-    NVector defects_mask;
-    vector<NVector> krylov_basis;
+    state initial_state;
+    state defects_mask;
+    vector<state> krylov_basis;
 
     corrFkt dos;
 
@@ -317,7 +259,7 @@ struct storage : public head {
         if (k>0) {
             initial_state.allocate(k*k);
             defects_mask.allocate(k*k);
-            for (int i=0;i<m;i++) krylov_basis.push_back(NVector());
+            for (int i=0;i<m;i++) krylov_basis.push_back(state());
             for (int i=0;i<m;i++) krylov_basis[i].allocate(k*k);
 
             westbound = new cplx[2*k];
@@ -333,7 +275,7 @@ struct storage : public head {
         initial_state.kill();
         defects_mask.kill();
         for (int i=0;i<m;i++) krylov_basis[i].kill();
-        krylov_basis = vector<NVector>();
+        krylov_basis = vector<state>();
 
         delete[] westbound;
         delete[] eastbound;

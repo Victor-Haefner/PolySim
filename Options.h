@@ -7,84 +7,190 @@
 
 namespace bpo = boost::program_options;
 
-void parse_options(int argc, char **argv, options* opt) {
-    cout << "\nParse Program Options\n";
-    bpo::options_description desc("Configuration ");
-    desc.add_options()
-        ("help", "show possible options")
-        ("path", bpo::value<string>(), "path to write and load from")
-        ("t_step", bpo::value<float>(), "simulation time step")
-        ("total_steps", bpo::value<int>(), "total time steps to compute")
-        ("buffer", bpo::value<int>(), "buffer size for correlation function")
-        ("system_size", bpo::value<int>(), "lattice size s x s")
-        ("krylov_dim", bpo::value<int>(), "dimension of krylov space")
-        ("append", bpo::value<bool>(), "set 1 to append to previous simulation")
-        ("job", bpo::value<char>(), "job to simulate d := dos, w := wavepacket, c := correlation function, v := play wave propagation")
-        ("grid_w", bpo::value<int>(), "cluster grid width")
-        ("grid_h", bpo::value<int>(), "cluster grid height")
-        ("defects_A", bpo::value<float>(), "defects in sublattice A in %")
-        ("defects_B", bpo::value<float>(), "defects in sublattice B in %")
-        ("omp_threads", bpo::value<int>(), "number of omp threads")
-        ("serial", bpo::value<bool>(), "serial or not")
-        ("graphene", bpo::value<bool>(), "graphene or square lattice")
-        ("debug", bpo::value<bool>(), "debug mode")
-        ("seed_system", bpo::value<int>(), "system seed")
-        ("seed_disorder", bpo::value<int>(), "disorder seed")
-        ("dos_crop", bpo::value<float>(), "nimmt nicht alle zeitschritte mit")
-        ("dif_r", bpo::value<int>(), "diffusion R max")
-        ("frame_skip", bpo::value<int>(), "frames between two takes of the recorder")
-        ("frame_w", bpo::value<int>(), "width of recorded frames")
-        ("frame_h", bpo::value<int>(), "height of recorded frames")
-    ;
 
-    bpo::variables_map vm;
-    ifstream in("sim.cfg");
-    bpo::store(bpo::parse_command_line(argc, argv, desc), vm);
-    bpo::store(bpo::parse_config_file(in, desc), vm);
-    in.close();
-    bpo::notify(vm);
+struct head {
+    //system, seeds, disorder
+    int k;//system size kxk
+    int seed_system;
+    int seed_disorder;
+    float dA;
+    float dB;
 
-    //help-----
-    if (vm.count("help")) { cout << desc << "\n"; exit(1); }
+    //simulation
+    int m;//krylov dimension
+    float dt;//timestep
+    int T;//total timesteps to perform
 
-    //job------
-    if (vm.count("job")) opt->job = vm["job"].as<char>();
-    else { cout << desc << "\n"; exit(1); }
+    //final results
+    int N;//korrelation funktion size
 
-    //path-----
-    if (vm.count("path")) opt->path = vm["path"].as<string>();
-    //else { cout << desc << "\n"; exit(1); }
+    //mpi variables
+    int grid_id; //grid id, needed to resume or append
+    int grid_w;
+    int grid_h;
 
-    //load-----
-    if (vm.count("append")) opt->append = vm["append"].as<bool>();
-    if (vm.count("serial")) opt->serial = vm["serial"].as<bool>();
-    if (vm.count("graphene")) opt->graphene = vm["graphene"].as<bool>();
-    if (vm.count("debug")) opt->debug = vm["debug"].as<bool>();
+    string getPath() {//BS
+        char path[200];
+        sprintf(path, "%ix%ion%ix%i_ID%i_A%f\%_B%f\%_m%i_dt%f_T%i_%d.bin", k*grid_w, k*grid_h, grid_w, grid_h, grid_id, dA*100, dB*100, m, dt, T, (int)time(0));
+        return string(path);
+    }
 
-    //other parameter
-    if (vm.count("total_steps")) opt->T = vm["total_steps"].as<int>();
-    if (vm.count("t_step")) opt->dt = vm["t_step"].as<float>();
-    if (vm.count("buffer")) opt->N_buffer = vm["buffer"].as<int>();
-    if (vm.count("system_size")) opt->k = vm["system_size"].as<int>();
-    if (vm.count("krylov_dim")) opt->m = vm["krylov_dim"].as<int>();
+    void writeHead(string path) {
+        ofstream file(path.c_str(), fstream::in | fstream::out | fstream::binary);
+        file.seekp(ios_base::beg);
+        file.write((char*)this, sizeof(head));
+        file.close();
+    }
 
-    if (vm.count("grid_w")) opt->grid_w = vm["grid_w"].as<int>();
-    if (vm.count("grid_h")) opt->grid_h = vm["grid_h"].as<int>();
+    void readHead(string path) {
+        ifstream file(path.c_str(), fstream::in | fstream::binary);
+        if (!file.is_open()) {
+            cout << "\nError while loading state, no file " << path << "\n";
+            return;
+        }
 
-    if (vm.count("seed_system")) opt->seed_system = vm["seed_system"].as<int>();
-    if (vm.count("seed_disorder")) opt->seed_disorder = vm["seed_disorder"].as<int>();
-    if (vm.count("dos_crop")) opt->dos_crop = vm["dos_crop"].as<float>();
+        file.seekg(ios_base::beg);
+        file.read((char*)this, sizeof(head));
+        file.close();
+    }
 
-    //specific defects
-    if (vm.count("defects_A")) opt->dA = vm["defects_A"].as<float>();
-    if (vm.count("defects_B")) opt->dB = vm["defects_B"].as<float>();
+    void printHead() {
+        cout << "\nPrint Head : ";
+        cout << "\n k " << k;
+        cout << "\n seed_disorder " << seed_disorder;
+        cout << "\n seed_system " << seed_system;
+        cout << "\n dA " << dA;
+        cout << "\n dB " << dB;
+        cout << "\n m " << m;
+        cout << "\n dt " << dt;
+        cout << "\n T " << T;
+        cout << "\n N " << N;
+        cout << "\n grid_id " << grid_id;
+        cout << "\n grid_w " << grid_w;
+        cout << "\n grid_h " << grid_h;
+    }
+};
+
+class options : public head {
+    public:
+        char job;
+        string path;//datapath
+        int N_buffer;//buffer
+        float dos_crop;
+
+        bool append;
+        bool serial;
+        bool graphene;
+        bool debug;
+
+        //dispersion constant
+        int R;
+        int dr;
+        int t_min;
+
+        //recorder options
+        int frame_skip;
+        int frame_w;
+        int frame_h;
+
+        int argc;
+        char** argv;
+
+        static options* get() {
+            static options* singleton_opt = 0;
+            if (singleton_opt == 0) singleton_opt = new options();
+            return singleton_opt;
+        }
+
+        void parse(int _argc, char** _argv) {
+            argc = _argc;
+            argv = _argv;
+
+            cout << "\nParse Program Options\n";
+            bpo::options_description desc("Configuration ");
+            desc.add_options()
+                ("help", "show possible options")
+                ("path", bpo::value<string>(), "path to write and load from")
+                ("t_step", bpo::value<float>(), "simulation time step")
+                ("total_steps", bpo::value<int>(), "total time steps to compute")
+                ("buffer", bpo::value<int>(), "buffer size for correlation function")
+                ("system_size", bpo::value<int>(), "lattice size s x s")
+                ("krylov_dim", bpo::value<int>(), "dimension of krylov space")
+                ("append", bpo::value<bool>(), "set 1 to append to previous simulation")
+                ("job", bpo::value<char>(), "job to simulate d := dos, w := wavepacket, c := correlation function, v := play wave propagation")
+                ("grid_w", bpo::value<int>(), "cluster grid width")
+                ("grid_h", bpo::value<int>(), "cluster grid height")
+                ("defects_A", bpo::value<float>(), "defects in sublattice A in %")
+                ("defects_B", bpo::value<float>(), "defects in sublattice B in %")
+                ("omp_threads", bpo::value<int>(), "number of omp threads")
+                ("serial", bpo::value<bool>(), "serial or not")
+                ("graphene", bpo::value<bool>(), "graphene or square lattice")
+                ("debug", bpo::value<bool>(), "debug mode")
+                ("seed_system", bpo::value<int>(), "system seed")
+                ("seed_disorder", bpo::value<int>(), "disorder seed")
+                ("dos_crop", bpo::value<float>(), "nimmt nicht alle zeitschritte mit")
+                ("dif_r", bpo::value<int>(), "diffusion, number of circles")
+                ("dif_t_min", bpo::value<int>(), "diffusion, time when to first take data")
+                ("dif_dr", bpo::value<int>(), "diffusion, thickness of circles")
+                ("frame_skip", bpo::value<int>(), "frames between two takes of the recorder")
+                ("frame_w", bpo::value<int>(), "width of recorded frames")
+                ("frame_h", bpo::value<int>(), "height of recorded frames")
+            ;
+
+            bpo::variables_map vm;
+            ifstream in("sim.cfg");
+            bpo::store(bpo::parse_command_line(argc, argv, desc), vm);
+            bpo::store(bpo::parse_config_file(in, desc), vm);
+            in.close();
+            bpo::notify(vm);
+
+            //help-----
+            if (vm.count("help")) { cout << desc << "\n"; exit(1); }
+
+            //job------
+            if (vm.count("job")) job = vm["job"].as<char>();
+            else { cout << desc << "\n"; exit(1); }
+
+            //path-----
+            if (vm.count("path")) path = vm["path"].as<string>();
+            //else { cout << desc << "\n"; exit(1); }
+
+            //load-----
+            if (vm.count("append")) append = vm["append"].as<bool>();
+            if (vm.count("serial")) serial = vm["serial"].as<bool>();
+            if (vm.count("graphene")) graphene = vm["graphene"].as<bool>();
+            if (vm.count("debug")) debug = vm["debug"].as<bool>();
+
+            //other parameter
+            if (vm.count("total_steps")) T = vm["total_steps"].as<int>();
+            if (vm.count("t_step")) dt = vm["t_step"].as<float>();
+            if (vm.count("buffer")) N_buffer = vm["buffer"].as<int>();
+            if (vm.count("system_size")) k = vm["system_size"].as<int>();
+            if (vm.count("krylov_dim")) m = vm["krylov_dim"].as<int>();
+
+            if (vm.count("grid_w")) grid_w = vm["grid_w"].as<int>();
+            if (vm.count("grid_h")) grid_h = vm["grid_h"].as<int>();
+
+            if (vm.count("seed_system")) seed_system = vm["seed_system"].as<int>();
+            if (vm.count("seed_disorder")) seed_disorder = vm["seed_disorder"].as<int>();
+            if (vm.count("dos_crop")) dos_crop = vm["dos_crop"].as<float>();
+
+            //specific defects
+            if (vm.count("defects_A")) dA = vm["defects_A"].as<float>();
+            if (vm.count("defects_B")) dB = vm["defects_B"].as<float>();
 
 
-    if (vm.count("dif_r")) opt->R = vm["dif_r"].as<int>();
-    if (vm.count("frame_skip")) opt->frame_skip = vm["frame_skip"].as<int>();
-    if (vm.count("frame_w")) opt->frame_w = vm["frame_w"].as<int>();
-    if (vm.count("frame_h")) opt->frame_h = vm["frame_h"].as<int>();
-}
+            if (vm.count("dif_r")) R = vm["dif_r"].as<int>();
+            if (vm.count("dif_t_min")) t_min = vm["dif_t_min"].as<int>();
+            if (vm.count("dif_dr")) dr = vm["dif_dr"].as<int>();
+
+            if (vm.count("frame_skip")) frame_skip = vm["frame_skip"].as<int>();
+            if (vm.count("frame_w")) frame_w = vm["frame_w"].as<int>();
+            if (vm.count("frame_h")) frame_h = vm["frame_h"].as<int>();
+        }
+
+};
+
 
 
 #endif // OPTIONS_H_INCLUDED

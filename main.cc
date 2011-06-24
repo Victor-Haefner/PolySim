@@ -39,15 +39,12 @@ int main(int argc, char** argv) {
     //ofstream fout("/dev/null");
     //cout.rdbuf(fout.rdbuf());
 
-    options* opt = new options();
-    parse_options(argc, argv, opt);
+    options* opt = options::get();
+    opt->parse(argc, argv);
 	cout <<"\ndone with options\n";
 
-    grid* gr = 0;
-    if (opt->serial == 0) gr = new grid(argc, argv, opt);
-
     Simulator sim;
-    sim.start(opt,gr);
+    sim.start();
 
     cout << "\nProgram End\n";
     return 0;

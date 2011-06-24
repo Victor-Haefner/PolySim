@@ -8,10 +8,11 @@
 #include "Wavepacket.h"
 #include "Timeevolution.h"
 #include "recorder.h"
+#include "Diffusion.h"
 
 class Simulator {
         options* opt;
-        grid* gr;
+        mpi_grid* gr;
 
         krylovRaum K;
         timeEvolution U;
@@ -33,7 +34,7 @@ class Simulator {
                 s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
 
                 s->krylov_basis[0].apply_mask(s->defects_mask);
-                K.normalize(s->krylov_basis[0]);
+                s->krylov_basis[0].normalize();
                 s->initial_state.copy(s->krylov_basis[0]);
             }
         }
@@ -50,7 +51,6 @@ class Simulator {
 
                 //projection on root state
                 cplx c = s->initial_state.mult(s->krylov_basis[0]);
-                if(gr) gr->gatherSum(c);
                 s->dos.buffer()[j] = c;
 
                 cout << "\nSimulation step " << i << " " << c << " on " << id << "\n";
@@ -103,8 +103,9 @@ class Simulator {
 
             s->allocate();
 
+            diffusion diff;
+
             int x0 = s->k/2;
-            int r0 = x0*s->k + x0;
 
             //delta peak
             //s->krylov_basis[0].setDelta(r0);
@@ -116,21 +117,19 @@ class Simulator {
 
             s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
             s->krylov_basis[0].apply_mask(s->defects_mask);
-            K.normalize(s->krylov_basis[0]);
+            s->krylov_basis[0].normalize();
             s->initial_state.copy(s->krylov_basis[0]);
 
-            //------------------end preparation-------------------
+            /*------------------end preparation-------------------*/
 
-            //build D(r,t) matrix
-            int t_min = 5./s->dt;//x/dt where x is the total time I wait before taking data
-            s->N = opt->R*(s->T-t_min);
-            s->dos.allocate(s->N, 1);//use the dos vector for the diffusion constant
-
-            cplx c0 = conj(s->krylov_basis[0][r0]);
+            diff.set(s, opt, x0, x0);
 
             //distance from wave origin
             for (int t=0;t<s->T;t++) {//propagate in time
                 cout << "\nSim t " << t;
+
+                //cout << " norm " << s->krylov_basis[0].norm();
+                //cout << " sqsum " << s->krylov_basis[0].sqsum();
 
                 //compute timestep
                 //construct krylov basis and construct hamiltonian in krylov space
@@ -138,26 +137,13 @@ class Simulator {
                 cplx* Vk = U.evolve(K.getHamilton());//evolve with hamiltonian from krylov space and given timestep
                 K.convert(Vk);//write new state back into world space and into the krylov basis
 
-                if (t >= t_min) {//let it propagate for a given total time before taking data
-                    //pnt at r taken from zigzag edge
-                    for (int r=0; r<opt->R; r++) {
-                        cplx c = s->krylov_basis[0][r0+r*2];//r*2 damit die punkte geometrisch auf einer reihe liegen!
-                        s->dos[t-t_min + r*(s->T-t_min)] = c;
-                    }
-                }
+
+                diff.process(t);
+                //diff.getShape(t);
             }
 
-            string path = "D_rt_";
-            path += s->getPath();
-
-            ofstream file(path.c_str());
-            for (int i=0;i<s->N;i++) {
-                if (i%(s->T-t_min) == 0 and i>0) file << "\n";
-                double _t = (i%(s->T-t_min) + t_min)*s->dt;
-                double _v = (sqrt(norm(s->dos[i])));
-                file << "\n" << log(_t) << " " << log(_v);
-            }
-            file.close();
+            diff.save();
+            //diff.saveShape();
         }
 
         void propagate_wavepacket() {
@@ -204,7 +190,7 @@ class Simulator {
 
 
             s->krylov_basis[0].apply_mask(s->defects_mask);
-            K.normalize(s->krylov_basis[0]);
+            s->krylov_basis[0].normalize();
 
             recorder rec;
             rec.set(s->krylov_basis[0].data(), s->defects_mask.data(), s->k, x0 - opt->frame_w/2, y0 - opt->frame_h/2, x0 + opt->frame_w/2, y0 + opt->frame_h/2);//nehme einf enster der groeße 100x100 auf
@@ -230,9 +216,9 @@ class Simulator {
             id = 0;
         }
 
-        void start(options* o, grid* _gr = 0) {
-            opt = o;
-            gr = _gr;
+        void start() {
+            opt = options::get();
+            gr = mpi_grid::get();
             if (gr) id = gr->id();
 
             switch (opt->job) {

@@ -10,7 +10,7 @@ class krylovRaum {
         storage* s;
         int k2;
 
-        grid* gr;
+        mpi_grid* gr;
 
         //Operatoren im krylov raum
         cplx* H_k;
@@ -29,7 +29,7 @@ class krylovRaum {
         }
 
         //copy boundaries in mpi buffer
-        void getBoundsFrom(NVector v) {
+        void getBoundsFrom(state v) {
             for (int i=0;i<s->k;i++) {
                 s->eastbound[s->k+i] = v[i*s->k +s->k -1];
                 s->westbound[s->k+i] = v[i*s->k];
@@ -38,12 +38,12 @@ class krylovRaum {
             }
         }
 
-        //Current in direction n
-        void JPsi_mpi(NVector src, NVector res, float nx, float ny, float nz) {
+        //Current in direction n, never used/tested
+        void JPsi_mpi(state& src, state& res, float nx, float ny, float nz) {
             src.apply_mask(s->defects_mask);
 
             getBoundsFrom(src);
-            gr->getBounds(s);
+            gr->getBounds(s->k, s->northbound, s->southbound, s->westbound, s->eastbound);
 
             float n = sqrt(nx*nx+ny*ny+nz*nz); nx/=n; ny/=n; nz/=n;//normiere n
             int x,y,g;
@@ -102,14 +102,14 @@ class krylovRaum {
                 if (i < s->k) res[i] += t_n*s->northbound[x];
             }
 
-            src.apply_mask(s->defects_mask);
+            res.apply_mask(s->defects_mask);
         }
 
-        void HPsi_mpi(NVector src, NVector res) {//MPI
+        void HPsi_mpi(state& src, state& res) {//MPI
             src.apply_mask(s->defects_mask);
 
             getBoundsFrom(src);
-            gr->getBounds(s);
+            gr->getBounds(s->k, s->northbound, s->southbound, s->westbound, s->eastbound);
 
             int g;
             for (int i=0;i<k2;i++) {
@@ -148,10 +148,10 @@ class krylovRaum {
                 if (i < s->k) res[i] += s->northbound[x];
             }
 
-            src.apply_mask(s->defects_mask);
+            res.apply_mask(s->defects_mask);
         }
 
-        void HPsi_serial(NVector src, NVector res) {//calc basis vector j+1
+        void HPsi_serial(state& src, state& res) {//calc basis vector j+1
             src.apply_mask(s->defects_mask);
 
             int g;
@@ -190,10 +190,14 @@ class krylovRaum {
                 if (i < s->k) res[i] += src[k2-s->k+i];
             }
 
-            src.apply_mask(s->defects_mask);
+            res.apply_mask(s->defects_mask);
         }
 
         double computeBasis() {
+
+            //normalize(s->krylov_basis[0]);
+            normC[0]=1;
+
 
             //calc v Hv HHv HHHv ...
             if (s->opt->serial) for (int i=0;i<s->m-1;i++) HPsi_serial(s->krylov_basis[i], s->krylov_basis[i+1]);
@@ -203,9 +207,6 @@ class krylovRaum {
             for (int i=0;i<s->m;i++) {//OK
                 o_hh_o[i] = s->krylov_basis[i].mult(s->krylov_basis[0]);
                 o_hh_o[i+s->m-1] = s->krylov_basis[i].mult(s->krylov_basis[s->m-1]);
-
-                if(gr) gr->gatherSum(o_hh_o[i]);
-                if(gr) gr->gatherSum(o_hh_o[i+s->m-1]);
             }
 
             //gram schmidt : b(i) = H i> - |j><j Hi 0> = w(i) - ...
@@ -213,13 +214,12 @@ class krylovRaum {
             {
                 for (i1=1; i1<s->m; i1++) {// calc b(i)
                     for (i2=0; i2<i1; i2++) {
-                        //c = s->krylov_basis[i2].mult(s->krylov_basis[i1]);//<j Hi 0>
+                        //c = s->krylov_basis[i2].mult(s->krylov_basis[i1]);//<j Hi 0> //to be removed
                         c = khio(i2, i1);
-                        if(gr) gr->gatherSum(c);
                         for (i3=0; i3<k2; i3++) s->krylov_basis[i1][i3] -= s->krylov_basis[i2][i3] * c;//|i> -= c|j>
                     }
 
-                    normC[i1] = normalize(s->krylov_basis[i1]);
+                    normC[i1] = s->krylov_basis[i1].normalize();
                 }
             }
 
@@ -291,7 +291,7 @@ class krylovRaum {
             if (k_h_o) delete[] k_h_o;
         }
 
-        void set(storage* _s, grid* _gr) {
+        void set(storage* _s, mpi_grid* _gr) {
             s = _s;
             gr = _gr;
             int m = s->m;
@@ -328,19 +328,6 @@ class krylovRaum {
         /*cplx* getCurrent() {
             return J_k;
         }*/
-
-        double normalize(NVector& v) {
-            long double norm;
-            cplx tmp;
-
-            tmp = v.mult(v);
-            if (gr) gr->gatherSum(tmp);
-
-            norm = sqrt(real(tmp));
-            v.normalize(norm);
-
-            return norm;
-        }
 
         void do_J_p0(float nx, float ny, float nz) {
             JPsi_mpi(s->krylov_basis[0], s->krylov_basis[1], nx, ny, nz);
