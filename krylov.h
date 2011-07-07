@@ -155,21 +155,23 @@ class krylovRaum {
             src.apply_mask(s->defects_mask);
 
             int g;
+            int x,y;
             for (int i=0;i<k2;i++) {
                 res[i] = 0;
+                x = i%s->k;
+                y = i/s->k;
 
                 //Innerhalb einer Zeile----------------------------------
-                if (i%s->k != 0) res[i] += src[i-1];
-                if (i%s->k != s->k-1) res[i] += src[i+1];
+                if (x != 0) res[i] += src[i-1];
+                if (x != s->k-1) res[i] += src[i+1];
 
                 //periodizitaet horizontal-------
-                if (i%s->k == 0) res[i] += src[i+s->k-1];
-                if (i%s->k == s->k-1) res[i] += src[i-s->k+1];
-
+                if (x == 0) res[i] += src[i+s->k-1];
+                if (x == s->k-1) res[i] += src[i-s->k+1];
 
                 //zwischen den Zeilen------------------------------------
                 #ifdef GRAPHENE
-                g = i%s->k + i/s->k;
+                g = x + y;
                 if (g%2 == 0)
                 #endif
                 if (i < k2-s->k) res[i] += src[i+s->k];

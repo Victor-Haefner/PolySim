@@ -114,7 +114,6 @@ class Simulator {
             wavepacket w;
             w.set(s->krylov_basis[0].data(), s->k, x0, x0, 0, 0, 2);
 
-
             s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
             s->krylov_basis[0].apply_mask(s->defects_mask);
             s->krylov_basis[0].normalize();
@@ -126,7 +125,8 @@ class Simulator {
 
             //distance from wave origin
             for (int t=0;t<s->T;t++) {//propagate in time
-                cout << "\nSim t " << t;
+                if (t%opt->N_buffer == 0) cout << "\nSim t " << t << " step " << s->dt;
+                //cout << "\nSim t " << t << " " << opt->N_buffer << " " << t%opt->N_buffer;
 
                 //cout << " norm " << s->krylov_basis[0].norm();
                 //cout << " sqsum " << s->krylov_basis[0].sqsum();
@@ -144,6 +144,13 @@ class Simulator {
 
             diff.save();
             //diff.saveShape();
+        }
+
+        void average_diffusion_data() {
+            diffusion diff;
+            storage* s = new storage(opt);
+            diff.set(s,opt,0,0);
+            diff.average(opt->path);
         }
 
         void propagate_wavepacket() {
@@ -223,13 +230,16 @@ class Simulator {
 
             switch (opt->job) {
                 case 'c':
-                    compute_correlation_function();//system s, number of steps
+                    compute_correlation_function();
                     break;
                 case 'd':
                     if (id == 0) compute_dos();
                     break;
                 case 'w':
                     compute_diffusion_constant();
+                    break;
+                case 'a':
+                    average_diffusion_data();
                     break;
                 case 'p':
                     propagate_wavepacket();

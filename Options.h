@@ -74,6 +74,7 @@ struct head {
 class options : public head {
     public:
         char job;
+
         string path;//datapath
         int N_buffer;//buffer
         float dos_crop;
@@ -83,10 +84,10 @@ class options : public head {
         bool graphene;
         bool debug;
 
-        //dispersion constant
+        //diffusion
         int R;
-        int dr;
-        int t_min;
+        char order;
+        float t_skip;
 
         //recorder options
         int frame_skip;
@@ -122,17 +123,16 @@ class options : public head {
                 ("grid_h", bpo::value<int>(), "cluster grid height")
                 ("defects_A", bpo::value<float>(), "defects in sublattice A in %")
                 ("defects_B", bpo::value<float>(), "defects in sublattice B in %")
-                ("omp_threads", bpo::value<int>(), "number of omp threads")
                 ("serial", bpo::value<bool>(), "serial or not")
                 ("graphene", bpo::value<bool>(), "graphene or square lattice")
                 ("debug", bpo::value<bool>(), "debug mode")
                 ("seed_system", bpo::value<int>(), "system seed")
                 ("seed_disorder", bpo::value<int>(), "disorder seed")
-                ("dos_crop", bpo::value<float>(), "nimmt nicht alle zeitschritte mit")
-                ("dif_r", bpo::value<int>(), "diffusion, number of circles")
-                ("dif_t_min", bpo::value<int>(), "diffusion, time when to first take data")
-                ("dif_dr", bpo::value<int>(), "diffusion, thickness of circles")
-                ("frame_skip", bpo::value<int>(), "frames between two takes of the recorder")
+                ("dos_crop", bpo::value<float>(), "crop the input data before fourier transforming")
+                ("dif_r", bpo::value<int>(), "diffusion, max radius to store")
+                ("dif_tskip", bpo::value<float>(), "diffusion, betrachtete zeiten")
+                ("dif_order", bpo::value<char>(), "diffusion, order parameter to sort data [t]imewise or by [r]adius")
+                ("frame_skip", bpo::value<int>(), "steps between two snapshots of the recorder")
                 ("frame_w", bpo::value<int>(), "width of recorded frames")
                 ("frame_h", bpo::value<int>(), "height of recorded frames")
             ;
@@ -181,8 +181,8 @@ class options : public head {
 
 
             if (vm.count("dif_r")) R = vm["dif_r"].as<int>();
-            if (vm.count("dif_t_min")) t_min = vm["dif_t_min"].as<int>();
-            if (vm.count("dif_dr")) dr = vm["dif_dr"].as<int>();
+            if (vm.count("dif_order")) order = vm["dif_order"].as<char>();
+            if (vm.count("dif_tskip")) t_skip = vm["dif_tskip"].as<float>();
 
             if (vm.count("frame_skip")) frame_skip = vm["frame_skip"].as<int>();
             if (vm.count("frame_w")) frame_w = vm["frame_w"].as<int>();

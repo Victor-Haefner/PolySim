@@ -10,6 +10,8 @@ class wavepacket {
         int k, x0, y0, x, y;
         float kx0, ky0, s;
 
+        bool isSameSublatice(int x, int y) { return (x+y-x0-y0)%2 == 0; }
+
         cplx getGausSquare(int i) {
             x = i%k;
             y = i/k;
@@ -23,26 +25,21 @@ class wavepacket {
             return exp(A + a);
         }
 
-        cplx getGausHoneycomb(int i) {
+        cplx getGausHoneycomb(int i, float la = 1) {
             x = i%k;
             y = i/k;
 
             int Dxi = x-x0;
             int Dyi = y-y0;
 
-            //lattice cst
-            float la = 1;
-
             //Same SubLattice?
-            bool ssl;
-            if ((Dxi%2 + Dyi%2)%2 == 0) ssl = true;
-            else ssl = false;
+            bool ssl = isSameSublatice(x,y);
 
             //site distance in space
             float Dx = Dxi*sqrt(3)/2.*la;
             float Dy = Dyi*1.5*la;
             if (!ssl) {
-                if (y0%2 + x0%2 == 1) Dy += 0.5*la; // +/- ..je nachdem auf welchem untergitter ich mich in x0y0 befinde!!
+                if ((y0 + x0)%2 == 1) Dy += 0.5*la; // +/- ..je nachdem auf welchem untergitter ich mich in x0y0 befinde!!
                 else Dy -= 0.5*la;
             }
 
