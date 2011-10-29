@@ -171,15 +171,15 @@ class Simulator {
 
             //-----------SCENARIOS-------------------------------------------------------------
             //zerfliessendes gaus packet in der mitte
-            w.set(s->krylov_basis[0].data(), s->k, x0, y0, 0, 0, 2);
+            //w.set(s->krylov_basis[0].data(), s->k, x0, y0, 0, 0, 2);
 
 
 
 
             //defekt in der mitte------------------------------------------------------------------
             //propagierendes packet
-            //w.set(s->krylov_basis[0].data(), s->k, x0-15, y0, 1, 0, 2);
-            //s->defects_mask[s->k*y0+x0] = cplx(0,0);
+            w.set(s->krylov_basis[0].data(), s->k, x0-15, y0, 1, 0, 2);
+            s->defects_mask[s->k*y0+x0] = cplx(0,0);
             //---------------------------------------------------------------------------------
 
 
