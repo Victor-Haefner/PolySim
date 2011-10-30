@@ -106,7 +106,8 @@ class krylovRaum {
         }
 
         void HPsi_mpi(state& src, state& res) {//MPI
-            src.apply_mask(s->defects_mask);
+            //src.apply_mask(s->defects_mask);
+            float c_r, c_i;
 
             getBoundsFrom(src);
             gr->getBounds(s->k, s->northbound, s->southbound, s->westbound, s->eastbound);
@@ -114,6 +115,11 @@ class krylovRaum {
             int g;
             for (int i=0;i<k2;i++) {
                 res[i] = 0;
+
+                c_r = real(src[i]);
+                c_i = imag(src[i]);
+                if (c_r == 0 and c_i == 0) continue;
+
                 int x = i%s->k;
                 int y = i/s->k;
 
@@ -148,16 +154,22 @@ class krylovRaum {
                 if (i < s->k) res[i] += s->northbound[x];
             }
 
-            res.apply_mask(s->defects_mask);
+            //res.apply_mask(s->defects_mask);
         }
 
         void HPsi_serial(state& src, state& res) {//calc basis vector j+1
-            src.apply_mask(s->defects_mask);
+            //src.apply_mask(s->defects_mask);
+            float c_r, c_i;
 
             int g;
             int x,y;
             for (int i=0;i<k2;i++) {
                 res[i] = 0;
+
+                c_r = real(src[i]);
+                c_i = imag(src[i]);
+                if (c_r == 0 and c_i == 0) continue;
+
                 x = i%s->k;
                 y = i/s->k;
 
@@ -192,7 +204,7 @@ class krylovRaum {
                 if (i < s->k) res[i] += src[k2-s->k+i];
             }
 
-            res.apply_mask(s->defects_mask);
+            //res.apply_mask(s->defects_mask);
         }
 
         double computeBasis() {
