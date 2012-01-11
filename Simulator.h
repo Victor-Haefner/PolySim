@@ -20,18 +20,21 @@ class Simulator {
         int id;
 
         void initRandomSystem(storage* s) {//needs to be checked!
-            cout << "\nInit random system\n";
+            //cout << "\nInit random system\n";
 
             //if the append option is active, the file in path will be loaded and new data appended
             if (opt->append) s->load(opt->path);
 
-            K.set(s,gr);                cout << "\nK set\n";
-            U.set(s);                   cout << "\nU set\n";
+            K.set(s,gr);//                cout << "\nK set\n";
+            U.set(s);//                   cout << "\nU set\n";
 
             if (!opt->append) {//generate new random state
                 s->allocate();
-                s->krylov_basis[0].setRandom(id + opt->seed_system);//system
-                s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
+                s->krylov_basis[0].setRandom(id + opt->seed_system);//random state seed different for every patch
+                //s->krylov_basis[0].setRandom(opt->seed_system);//same random state seed for every process
+
+                //s->distributeRandomDefects(id + opt->seed_disorder, opt->dA, opt->dB);//disorder
+                s->distributeRandomDefects(opt->seed_disorder, opt->dA, opt->dB);//disorder
 
                 s->krylov_basis[0].apply_mask(s->defects_mask);
                 s->krylov_basis[0].normalize();
@@ -40,12 +43,12 @@ class Simulator {
         }
 
         void compute_correlation_function() {
-            cout << "\nStart correlation function computation\n";
+            //cout << "\nStart correlation function computation\n";
 
             storage* s = new storage(opt);
             initRandomSystem(s);
 
-            timer t0;                   cout << "\ntimer set\n";
+            timer t0;//                   cout << "\ntimer set\n";
 
             for (int i=0,j=0; i<s->T; i++) {
 
@@ -53,7 +56,7 @@ class Simulator {
                 cplx c = s->initial_state.mult(s->krylov_basis[0]);
                 s->dos.buffer()[j] = c;
 
-                cout << "\nSimulation step " << i << " " << c << " on " << id << "\n";
+                //cout << "\nSimulation step " << i << " " << c << " on " << id << "\n";
 
                 //compute timestep
                 //construct krylov basis and construct hamiltonian in krylov space
@@ -71,7 +74,7 @@ class Simulator {
             }
 
             if (gr) MPI_Barrier(MPI_COMM_WORLD);
-            cout << "\nEnd correlation function computation after " << t0.elapsed() << " s\n";
+            //cout << "\nEnd correlation function computation after " << t0.elapsed() << " s\n";
         }
 
         void compute_dos() {
@@ -166,19 +169,12 @@ class Simulator {
             int x0 = s->k/2;
             int y0 = x0;
 
-            //gaus wave packet
+            //gaus wave packet------------------------------------------------------------------------------
             wavepacket w;
-
-            //-----------SCENARIOS-------------------------------------------------------------
-            //zerfliessendes gaus packet in der mitte
-            //w.set(s->krylov_basis[0].data(), s->k, x0, y0, 0, 0, 2);
-
-
-
+            //w.set(s->krylov_basis[0].data(), s->k, x0, y0, 0, 0, 2);//standing
+            w.set(s->krylov_basis[0].data(), s->k, x0-10, y0, 1, 0, 2);//propagating
 
             //defekt in der mitte------------------------------------------------------------------
-            //propagierendes packet
-            w.set(s->krylov_basis[0].data(), s->k, x0-15, y0, 1, 0, 2);
             s->defects_mask[s->k*y0+x0] = cplx(0,0);
             //---------------------------------------------------------------------------------
 
@@ -219,7 +215,6 @@ class Simulator {
         Simulator() {
             opt = 0;
             gr = 0;
-
             id = 0;
         }
 

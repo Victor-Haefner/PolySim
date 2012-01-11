@@ -202,57 +202,117 @@ struct storage : public head {
         opt = op;
     }
 
-    void distributeRandomDefects(int seed, float def_A, float def_B) {
-        int nA=def_A*k*k*0.5;
-        int nB=def_B*k*k*0.5;
-        int nA_t = 0;
-        int nB_t = 0;
-        char l=0;
+    int getRandomPosition(int max, int k) {
+        float _r = 1./RAND_MAX;
+        _r *= max;
+        _r *= rand();
+        return (int)_r;
+    }
 
-        for (int i=0;i<defects_mask.size();i++) defects_mask[i] = cplx(1,0);
+    int getRandomPositionOnSublattice(int max, int k, int sublattice) {
+
+        //check sublattice
+        int r,s;
+        do {
+            r = getRandomPosition(max,k);
+            s = (r%k+r/k)%2;
+        } while (sublattice != s);
+
+        return r;
+    }
+
+    //distribute random defects on the whole lattice but only keeps those on the subpatch
+    void distributeRandomDefects(int seed, float def_A, float def_B) {
+        int Nx = k;
+        int Ny = k;
+        int offset = 0;
+
+        mpi_grid* gr = mpi_grid::get();
+        if(gr) Nx *= gr->W;
+        if(gr) Ny *= gr->H;
+        if(gr) offset = gr->id() * k*k;//offset of the patch
+        int N = Nx*Ny;
+
+        int nA = def_A * N * 0.5;//number of vacancies in A
+        int nB = def_B * N * 0.5;// in B
+
+        for (int i=0;i<defects_mask.size();i++)
+            defects_mask[i] = cplx(1,0);
 
         srand(seed);
-        int d_n = 0;
-        for (int i=0;i<nA+nB;i++) {
-            int dx = rand()%k;
-            int dy = rand()%k;
 
-            if ((dx%2 + dy%2)%2) l='A';
-            else l='B';
+        map<int, int> vac_map;
+        int pos;
+        int sublattice = 1;//'A'
 
-            switch(l) {
-                case 'A':
-                    if (nA_t<nA) nA_t++;
-                    else {dx++;nB_t++;}
-                    break;
-                case 'B':
-                    if (nB_t<nB) nB_t++;
-                    else {dx++;nA_t++;}
-                    break;
-            }
-
-            if (dx >= k) dx -= k - k%2;
-
-            cplx u = cplx(0,0);
-
-            bool wrong=false;
-            do {
-                if(defects_mask[dx + dy*k] == u) {
-                    wrong=true;
-                    dx+=2;
-                    if (dx >= k) {
-                        dx -= k - k%2 -1;
-                        if (dx == 2) dx = 0;
-                        dy++;
-                    }
-                    if (dy >= k) dy -= k;
-                    break;
-                } else wrong=false;
-            } while(wrong);
-
-            defects_mask[dx + dy*k] = cplx(0,0); d_n++;
+        for (int i=0; i<nA+nB; i++) {
+            if (i>=nA) sublattice = 0;//'B'
+            do pos = getRandomPositionOnSublattice(N, Nx, sublattice);//generate new position
+            while (vac_map.count(pos)); //until you find a non existing one
+            vac_map[pos] = i;//store the random position in a map, pos as unique keys
         }
-        cout << "\nNumber of defects : " << d_n << " witch are " << 100.0*d_n/(k*k) << "%\n";
+
+        int d_n = 0;//count the vacancies
+        map<int,int>::iterator it = vac_map.begin();
+
+        for ( ; it != vac_map.end(); it++) {//fill own defects map
+            int i = it->first;
+            int x,y;
+
+            if (gr) x = i%(k*gr->W) - k*gr->gx;
+            else x = i%k;
+
+            if (gr) y = i/(k*gr->W) - k*gr->gy;
+            else y = i/k;
+
+            if (x < 0 or x >= k) continue;
+            if (y < 0 or y >= k) continue;
+
+            defects_mask[y*k+x] = cplx(0,0);
+            d_n++;
+
+            //cout << "\nplace defect at : " << local << " x: " << local%Nx << " y: " << local/Nx << " s: " << (local%Nx+local/Nx)%2 << " Nx: " << Nx;
+        }
+
+        return;
+
+        //------------------------------------------DEBUG AUSGABE----------------------------------
+        if (gr) sleep(gr->id()*2);
+        it = vac_map.begin();
+        cout << "\n\nfull defects mask : ";
+        for (int i=0;i<N;i++) {
+            char s;
+            if (i%Nx == 0) cout << "\n";
+
+            if ((i%Nx+i/Nx)%2 == 1) s = 'a';
+            else  s = 'b';
+
+            if (i%Nx == 0) cout << s;
+
+            if(vac_map.count(i)) cout << " " << s << "-";
+            else cout << "   ";
+        }
+
+
+        //print defects mask
+        if (gr) cout << "\ndefects_mask of " << gr->id() << " " << offset;
+        else cout << "\ndefects_mask";
+        for (int i=0;i<defects_mask.size();i++) {
+            char s;
+            if (i%k == 0) cout << "\n";
+
+            if ((i%k+i/k)%2 == 1) s = 'a';
+            else  s = 'b';
+
+            if (i%k == 0) cout << s;
+
+            if (real(defects_mask[i])) cout << "   ";
+            else cout << " " << s << "-";
+        }
+        cout << "\n";
+
+        //if(gr) cout << "\nvariables : " << offset << "\n";
+        //cout << "\nNumber of defects : " << vac_map.size() << " witch are " << 100.0*vac_map.size()/N << "%, on this patch " << d_n << " : " << 100.0*d_n/(k*k) << "%\n";
     }
 
     void allocate() {

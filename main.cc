@@ -36,16 +36,12 @@ float pi = 4*std::atan(1);
 //MEMORY : 256x256 array is 1 mb!
 
 int main(int argc, char** argv) {
-    //ofstream fout("/dev/null");
-    //cout.rdbuf(fout.rdbuf());
-
     options* opt = options::get();
     opt->parse(argc, argv);
-	cout <<"\ndone with options\n";
 
     Simulator sim;
     sim.start();
 
-    cout << "\nProgram End\n";
+    cout << "\nSimulation End\n";
     return 0;
 }

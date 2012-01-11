@@ -105,8 +105,8 @@ class krylovRaum {
             res.apply_mask(s->defects_mask);
         }
 
-        void HPsi_mpi(state& src, state& res) {//MPI
-            //src.apply_mask(s->defects_mask);
+        void HPsi_mpi_graphene(state& src, state& res) {//MPI
+            src.apply_mask(s->defects_mask);
             float c_r, c_i;
 
             getBoundsFrom(src);
@@ -116,9 +116,9 @@ class krylovRaum {
             for (int i=0;i<k2;i++) {
                 res[i] = 0;
 
-                c_r = real(src[i]);
-                c_i = imag(src[i]);
-                if (c_r == 0 and c_i == 0) continue;
+                //c_r = real(src[i]);
+                //c_i = imag(src[i]);
+                //if (c_r == 0 and c_i == 0) continue;
 
                 int x = i%s->k;
                 int y = i/s->k;
@@ -128,15 +128,11 @@ class krylovRaum {
                 if (x != s->k-1) res[i] += src[i+1];
 
                 //zwischen den Zeilen------------------------------------
-                #ifdef GRAPHENE
                 g = x + y;
                 if (g%2 == 0)
-                #endif
                 if (i < k2-s->k) res[i] += src[i+s->k];
 
-                #ifdef GRAPHENE
                 if (g%2 == 1)
-                #endif
                 if (i >= s->k) res[i] += src[i-s->k];
 
                 //periodizitaet horizontal------- mpi version------------------
@@ -144,31 +140,62 @@ class krylovRaum {
                 if (x == s->k-1) res[i] += s->eastbound[y];
 
                 //periodizitaet vertikal-------
-                #ifdef GRAPHENE
                 if (g%2 == 0)
-                #endif
                 if (i >= k2-s->k) res[i] += s->southbound[x];
-                #ifdef GRAPHENE
+
                 if (g%2 == 1)
-                #endif
                 if (i < s->k) res[i] += s->northbound[x];
             }
 
-            //res.apply_mask(s->defects_mask);
+            res.apply_mask(s->defects_mask);
         }
 
-        void HPsi_serial(state& src, state& res) {//calc basis vector j+1
-            //src.apply_mask(s->defects_mask);
+        void HPsi_mpi_square(state& src, state& res) {//MPI
+            src.apply_mask(s->defects_mask);
+            float c_r, c_i;
+
+            getBoundsFrom(src);
+            gr->getBounds(s->k, s->northbound, s->southbound, s->westbound, s->eastbound);
+
+            int g;
+            for (int i=0;i<k2;i++) {
+                res[i] = 0;
+
+                //c_r = real(src[i]);
+                //c_i = imag(src[i]);
+                //if (c_r == 0 and c_i == 0) continue;
+
+                int x = i%s->k;
+                int y = i/s->k;
+
+                //Innerhalb einer Zeile----------------------------------
+                if (x != 0) res[i] += src[i-1];
+                if (x != s->k-1) res[i] += src[i+1];
+
+                //zwischen den Zeilen------------------------------------
+                if (i < k2-s->k) res[i] += src[i+s->k];
+                if (i >= s->k) res[i] += src[i-s->k];
+
+                //periodizitaet horizontal------- mpi version------------------
+                if (x == 0) res[i] += s->westbound[y];
+                if (x == s->k-1) res[i] += s->eastbound[y];
+
+                //periodizitaet vertikal-------
+                if (i >= k2-s->k) res[i] += s->southbound[x];
+                if (i < s->k) res[i] += s->northbound[x];
+            }
+
+            res.apply_mask(s->defects_mask);
+        }
+
+        void HPsi_serial_graphene(state& src, state& res) {//calc basis vector j+1
+            src.apply_mask(s->defects_mask);
             float c_r, c_i;
 
             int g;
             int x,y;
             for (int i=0;i<k2;i++) {
                 res[i] = 0;
-
-                c_r = real(src[i]);
-                c_i = imag(src[i]);
-                if (c_r == 0 and c_i == 0) continue;
 
                 x = i%s->k;
                 y = i/s->k;
@@ -182,29 +209,54 @@ class krylovRaum {
                 if (x == s->k-1) res[i] += src[i-s->k+1];
 
                 //zwischen den Zeilen------------------------------------
-                #ifdef GRAPHENE
                 g = x + y;
                 if (g%2 == 0)
-                #endif
                 if (i < k2-s->k) res[i] += src[i+s->k];
 
-                #ifdef GRAPHENE
                 if (g%2 == 1)
-                #endif
                 if (i >= s->k) res[i] += src[i-s->k];
 
                 //periodizitaet vertikal-------
-                #ifdef GRAPHENE
                 if (g%2 == 0)
-                #endif
                 if (i >= k2-s->k) res[i] += src[s->k-k2+i];
-                #ifdef GRAPHENE
+
                 if (g%2 == 1)
-                #endif
                 if (i < s->k) res[i] += src[k2-s->k+i];
             }
 
-            //res.apply_mask(s->defects_mask);
+            res.apply_mask(s->defects_mask);
+        }
+
+        void HPsi_serial_square(state& src, state& res) {//calc basis vector j+1
+            src.apply_mask(s->defects_mask);
+            float c_r, c_i;
+
+            int g;
+            int x,y;
+            for (int i=0;i<k2;i++) {
+                res[i] = 0;
+
+                x = i%s->k;
+                y = i/s->k;
+
+                //Innerhalb einer Zeile----------------------------------
+                if (x != 0) res[i] += src[i-1];
+                if (x != s->k-1) res[i] += src[i+1];
+
+                //periodizitaet horizontal-------
+                if (x == 0) res[i] += src[i+s->k-1];
+                if (x == s->k-1) res[i] += src[i-s->k+1];
+
+                //zwischen den Zeilen------------------------------------
+                if (i < k2-s->k) res[i] += src[i+s->k];
+                if (i >= s->k) res[i] += src[i-s->k];
+
+                //periodizitaet vertikal-------
+                if (i >= k2-s->k) res[i] += src[s->k-k2+i];
+                if (i < s->k) res[i] += src[k2-s->k+i];
+            }
+
+            res.apply_mask(s->defects_mask);
         }
 
         double computeBasis() {
@@ -214,8 +266,12 @@ class krylovRaum {
 
 
             //calc v Hv HHv HHHv ...
-            if (s->opt->serial) for (int i=0;i<s->m-1;i++) HPsi_serial(s->krylov_basis[i], s->krylov_basis[i+1]);
-            else for (int i=0;i<s->m-1;i++) HPsi_mpi(s->krylov_basis[i], s->krylov_basis[i+1]);
+            for (int i=0;i<s->m-1;i++) {
+                if ( s->opt->serial and  s->opt->graphene) HPsi_serial_graphene(s->krylov_basis[i], s->krylov_basis[i+1]);
+                if (!s->opt->serial and  s->opt->graphene) HPsi_mpi_graphene(s->krylov_basis[i], s->krylov_basis[i+1]);
+                if ( s->opt->serial and !s->opt->graphene) HPsi_serial_square(s->krylov_basis[i], s->krylov_basis[i+1]);
+                if (!s->opt->serial and !s->opt->graphene) HPsi_mpi_square(s->krylov_basis[i], s->krylov_basis[i+1]);
+            }
 
             //vor gram schmidt!
             for (int i=0;i<s->m;i++) {//OK

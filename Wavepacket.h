@@ -69,11 +69,8 @@ class wavepacket {
             ky0 = p*sin(p_phi);
 
             for (int i=0;i<k*k;i++) {
-                #ifdef GRAPHENE
-                v[i] = getGausHoneycomb(i);
-                #else
-                v[i] = getGausSquare(i);
-                #endif
+                if (options::get()->graphene) v[i] = getGausHoneycomb(i);
+                else v[i] = getGausSquare(i);
             }
         }
 
