@@ -1,4 +1,4 @@
-# source: http://nbviewer.jupyter.org/github/barbagroup/CFDPython/blob/master/lessons/01_Step_1.ipynb
+# source: http://lorenabarba.com/blog/cfd-python-12-steps-to-navier-stokes/
 # Prof. Barba, 12 steps to Navier-Stokes
 
 import numpy                       
