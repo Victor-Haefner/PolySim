@@ -4,9 +4,13 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <boost/program_options/parsers.hpp>
+#include <string>
+#include <fstream>
+
 
 namespace bpo = boost::program_options;
 
+using namespace std;
 
 struct head {
     //system, seeds, disorder

@@ -73,7 +73,7 @@ class Simulator {
                 }
             }
 
-            if (gr) MPI_Barrier(MPI_COMM_WORLD);
+            if (gr) gr->barrier();
             //cout << "\nEnd correlation function computation after " << t0.elapsed() << " s\n";
         }
 

@@ -10,7 +10,6 @@
 #include <boost/timer.hpp>
 
 #include <fftw3.h>
-#include <mpi.h>
 
 using namespace std;
 using boost::timer;
