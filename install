@@ -1,3 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
-sudo apt-get install git codeblocks codeblocks-contrib libfftw3-dev libopenmpi-dev
+echo 'Install dependencies for PolySim..'
+sudo apt-get install -y git codeblocks codeblocks-contrib libfftw3-dev libopenmpi-dev
