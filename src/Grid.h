@@ -6,27 +6,29 @@
 typedef complex<double> cplx;
 
 class mpi_grid {
-    public:
+    private:
         //MPI zeugs
         int process_N, process_i, name_len;
         string processor_name;
 
-        //grid breite und hoehe
-        int W;
-        int H;
         //nachbar nodes
         int west;
         int east;
         int north;
         int south;
 
-        //eigene position im grid
-        int gx, gy;
 
         int getNode(int i, int j);
 
         mpi_grid();
         ~mpi_grid();
+
+    public:
+        //grid breite und hoehe
+        int W, H;
+
+        //eigene position im grid
+        int gx, gy;
 
     public:
         static mpi_grid* get();
